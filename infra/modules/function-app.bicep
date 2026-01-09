@@ -10,6 +10,34 @@ param functionAppName string
 @description('Name of the storage account')
 param storageAccountName string
 
+// AI Service parameters
+@description('Document Intelligence endpoint')
+param documentIntelligenceEndpoint string
+
+@description('Document Intelligence key')
+@secure()
+param documentIntelligenceKey string
+
+@description('Azure OpenAI endpoint')
+param openAIEndpoint string
+
+@description('Azure OpenAI key')
+@secure()
+param openAIKey string
+
+@description('Azure OpenAI embedding deployment name')
+param embeddingDeploymentName string
+
+@description('Azure OpenAI chat deployment name')
+param chatDeploymentName string
+
+@description('Azure AI Search endpoint')
+param searchEndpoint string
+
+@description('Azure AI Search admin key')
+@secure()
+param searchAdminKey string
+
 // Storage Account for Function App and Document Storage
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: storageAccountName
@@ -140,6 +168,43 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'DocumentsContainer'
           value: documentsContainer.name
+        }
+        // AI Services
+        {
+          name: 'DocumentIntelligenceEndpoint'
+          value: documentIntelligenceEndpoint
+        }
+        {
+          name: 'DocumentIntelligenceKey'
+          value: documentIntelligenceKey
+        }
+        {
+          name: 'AzureOpenAIEndpoint'
+          value: openAIEndpoint
+        }
+        {
+          name: 'AzureOpenAIKey'
+          value: openAIKey
+        }
+        {
+          name: 'AzureOpenAIEmbeddingDeployment'
+          value: embeddingDeploymentName
+        }
+        {
+          name: 'AzureOpenAIChatDeployment'
+          value: chatDeploymentName
+        }
+        {
+          name: 'AzureSearchEndpoint'
+          value: searchEndpoint
+        }
+        {
+          name: 'AzureSearchKey'
+          value: searchAdminKey
+        }
+        {
+          name: 'AzureSearchIndexName'
+          value: 'documents-index'
         }
       ]
     }

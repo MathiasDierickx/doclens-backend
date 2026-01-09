@@ -34,6 +34,17 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   tags: tags
 }
 
+// AI Services module
+module aiServices 'modules/ai-services.bicep' = {
+  name: 'aiServices'
+  scope: rg
+  params: {
+    location: location
+    tags: tags
+    resourceToken: resourceToken
+  }
+}
+
 // Function App module
 module functionApp 'modules/function-app.bicep' = {
   name: 'functionApp'
@@ -43,6 +54,15 @@ module functionApp 'modules/function-app.bicep' = {
     tags: tags
     functionAppName: !empty(functionAppName) ? functionAppName : 'func-doclens-${resourceToken}'
     storageAccountName: !empty(storageAccountName) ? storageAccountName : 'stdoclens${resourceToken}'
+    // AI Service connections
+    documentIntelligenceEndpoint: aiServices.outputs.documentIntelligenceEndpoint
+    documentIntelligenceKey: aiServices.outputs.documentIntelligenceKey
+    openAIEndpoint: aiServices.outputs.openAIEndpoint
+    openAIKey: aiServices.outputs.openAIKey
+    embeddingDeploymentName: aiServices.outputs.embeddingDeploymentName
+    chatDeploymentName: aiServices.outputs.chatDeploymentName
+    searchEndpoint: aiServices.outputs.searchEndpoint
+    searchAdminKey: aiServices.outputs.searchAdminKey
   }
 }
 
