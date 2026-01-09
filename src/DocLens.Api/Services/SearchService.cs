@@ -31,7 +31,8 @@ public class SearchService : ISearchService
                 new SimpleField("chunkIndex", SearchFieldDataType.Int32),
                 new SimpleField("pageNumber", SearchFieldDataType.Int32) { IsFilterable = true },
                 new SearchableField("content") { AnalyzerName = LexicalAnalyzerName.EnLucene },
-                new VectorSearchField("contentVector", 1536, "default-vector-profile")
+                new VectorSearchField("contentVector", 1536, "default-vector-profile"),
+                new SimpleField("positionsJson", SearchFieldDataType.String)  // For PDF highlighting
             ],
             VectorSearch = new VectorSearch
             {
@@ -72,7 +73,8 @@ public class SearchService : ISearchService
             ["chunkIndex"] = c.ChunkIndex,
             ["pageNumber"] = c.PageNumber,
             ["content"] = c.Content,
-            ["contentVector"] = c.ContentVector
+            ["contentVector"] = c.ContentVector,
+            ["positionsJson"] = c.PositionsJson
         });
 
         await _searchClient.IndexDocumentsAsync(
@@ -115,7 +117,8 @@ public class SearchService : ISearchService
                 Convert.ToInt32(doc["chunkIndex"]),
                 Convert.ToInt32(doc["pageNumber"]),
                 doc["content"].ToString()!,
-                []  // Don't return vector in search results
+                [],  // Don't return vector in search results
+                doc.TryGetValue("positionsJson", out var posJson) ? posJson?.ToString() : null
             ));
         }
 

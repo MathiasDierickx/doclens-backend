@@ -72,15 +72,10 @@ public class IndexingFunction
             var texts = chunks.Select(c => c.Content).ToList();
             var embeddings = await _embedding.GenerateEmbeddingsAsync(texts, cancellationToken);
 
-            // Step 4: Create document chunks with embeddings
-            var documentChunks = chunks.Zip(embeddings, (chunk, vector) => new DocumentChunk(
-                Id: $"{documentId}_{chunk.ChunkIndex}",
-                DocumentId: documentId,
-                ChunkIndex: chunk.ChunkIndex,
-                PageNumber: chunk.PageNumber,
-                Content: chunk.Content,
-                ContentVector: vector
-            )).ToList();
+            // Step 4: Create document chunks with embeddings and position data
+            var documentChunks = chunks.Zip(embeddings, (chunk, vector) =>
+                DocumentChunk.Create($"{documentId}_{chunk.ChunkIndex}", documentId, chunk, vector)
+            ).ToList();
 
             // Step 5: Index in AI Search
             await _status.UpdateStatusAsync(documentId, IndexingStatus.Indexing, 80, "Indexing in search...", cancellationToken: cancellationToken);

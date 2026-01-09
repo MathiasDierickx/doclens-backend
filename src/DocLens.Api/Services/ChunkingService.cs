@@ -18,7 +18,7 @@ public class ChunkingService : IChunkingService
             if (string.IsNullOrWhiteSpace(content))
                 continue;
 
-            var pageChunks = ChunkText(content, page.PageNumber, maxChunkSize, overlapSize, ref chunkIndex);
+            var pageChunks = ChunkText(content, page, maxChunkSize, overlapSize, ref chunkIndex);
             chunks.AddRange(pageChunks);
         }
 
@@ -27,7 +27,7 @@ public class ChunkingService : IChunkingService
 
     private static List<TextChunk> ChunkText(
         string text,
-        int pageNumber,
+        ExtractedPage page,
         int maxChunkSize,
         int overlapSize,
         ref int chunkIndex)
@@ -36,7 +36,8 @@ public class ChunkingService : IChunkingService
 
         if (text.Length <= maxChunkSize)
         {
-            chunks.Add(new TextChunk(text, chunkIndex++, pageNumber, 0, text.Length));
+            var positions = FindPositionsForRange(page, 0, text.Length);
+            chunks.Add(new TextChunk(text, chunkIndex++, page.PageNumber, 0, text.Length, positions));
             return chunks;
         }
 
@@ -59,7 +60,8 @@ public class ChunkingService : IChunkingService
 
             if (!string.IsNullOrWhiteSpace(chunkContent))
             {
-                chunks.Add(new TextChunk(chunkContent, chunkIndex++, pageNumber, startIndex, endIndex));
+                var positions = FindPositionsForRange(page, startIndex, endIndex);
+                chunks.Add(new TextChunk(chunkContent, chunkIndex++, page.PageNumber, startIndex, endIndex, positions));
             }
 
             // Move start index, accounting for overlap
@@ -75,5 +77,36 @@ public class ChunkingService : IChunkingService
         }
 
         return chunks;
+    }
+
+    /// <summary>
+    /// Find paragraph positions that overlap with the given character range.
+    /// This allows for PDF highlighting of chunks.
+    /// </summary>
+    private static List<TextPosition>? FindPositionsForRange(ExtractedPage page, int startOffset, int endOffset)
+    {
+        if (page.Paragraphs == null || page.Paragraphs.Count == 0)
+            return null;
+
+        var positions = new List<TextPosition>();
+
+        foreach (var para in page.Paragraphs)
+        {
+            var paraStart = para.CharOffset;
+            var paraEnd = para.CharOffset + para.CharLength;
+
+            // Check if paragraph overlaps with chunk range
+            if (paraEnd > startOffset && paraStart < endOffset)
+            {
+                positions.Add(new TextPosition(
+                    page.PageNumber,
+                    para.BoundingBox,
+                    para.CharOffset,
+                    para.CharLength
+                ));
+            }
+        }
+
+        return positions.Count > 0 ? positions : null;
     }
 }

@@ -108,10 +108,18 @@ public class AskFunction
                 }
             }
 
-            // Step 5: Send source references
+            // Step 5: Send source references with positions for PDF highlighting
             var sources = chunks
                 .GroupBy(c => c.PageNumber)
-                .Select(g => new SourceReference(g.Key, g.First().Content[..Math.Min(200, g.First().Content.Length)] + "..."))
+                .Select(g =>
+                {
+                    var firstChunk = g.First();
+                    return new SourceReference(
+                        g.Key,
+                        firstChunk.Content[..Math.Min(200, firstChunk.Content.Length)] + "...",
+                        firstChunk.GetPositions()
+                    );
+                })
                 .ToList();
 
             await SendSseEvent(response, "sources", new { sources }, cancellationToken);
