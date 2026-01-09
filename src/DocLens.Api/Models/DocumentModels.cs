@@ -27,6 +27,13 @@ public record ErrorResponse(
     string Error
 );
 
+public record DownloadUrlResponse(
+    string DocumentId,
+    string DownloadUrl,
+    string Filename,
+    DateTimeOffset ExpiresAt
+);
+
 public record HealthResponse(
     string Status,
     DateTime Timestamp,

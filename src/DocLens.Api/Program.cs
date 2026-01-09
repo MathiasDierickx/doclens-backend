@@ -81,6 +81,15 @@ builder.Services.AddSingleton<TableClient>(_ =>
     return tableClient;
 });
 
+// Register TableClient for ChatSessions (keyed service pattern using factory)
+builder.Services.AddKeyedSingleton<TableClient>("ChatSessions", (_, _) =>
+{
+    var connectionString = Environment.GetEnvironmentVariable("StorageConnection")!;
+    var tableClient = new TableClient(connectionString, "ChatSessions");
+    tableClient.CreateIfNotExists();
+    return tableClient;
+});
+
 // Register application services
 builder.Services.AddSingleton<IChunkingService, ChunkingService>();
 builder.Services.AddSingleton<IDocumentIntelligenceService, DocumentIntelligenceService>();
@@ -93,6 +102,12 @@ builder.Services.AddSingleton<ISearchService>(sp =>
     var indexName = Environment.GetEnvironmentVariable("AzureSearchIndexName")!;
     return new SearchService(searchClient, indexClient, indexName);
 });
+builder.Services.AddSingleton<IChatSessionService>(sp =>
+{
+    var tableClient = sp.GetRequiredKeyedService<TableClient>("ChatSessions");
+    return new ChatSessionService(tableClient);
+});
+builder.Services.AddSingleton<IPromptingService, PromptingService>();
 
 builder.Services
     .AddApplicationInsightsTelemetryWorkerService()

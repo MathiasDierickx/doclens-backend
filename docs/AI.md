@@ -4,14 +4,21 @@
 
 RAG (Retrieval-Augmented Generation) pipeline for document Q&A. Fully serverless on Azure.
 
+## Key Features
+
+- **PDF highlighting**: Bounding box coordinates preserved from extraction → chunking → search → frontend
+- **Chat sessions**: Follow-up questions with conversation history
+- **SSE streaming**: Real-time token-by-token response streaming
+- **Source references**: Click-to-navigate with PDF region highlighting
+
 ## Tech Stack
 
 ### Document Processing
 
 | Component | Service | Why |
 |-----------|---------|-----|
-| **PDF Text Extraction** | Azure AI Document Intelligence | Extracts text, tables, and structure from PDFs. Preserves page numbers for source references. Serverless pay-per-page pricing. |
-| **Chunking** | Custom (.NET) | Split extracted text into chunks (~500-1000 tokens) with overlap. Keep page metadata per chunk. |
+| **PDF Text Extraction** | Azure AI Document Intelligence | Extracts text with **bounding boxes** (paragraph coordinates). Preserves page numbers and positions for PDF highlighting. Serverless pay-per-page. |
+| **Chunking** | Custom (.NET) | Split into chunks (~2000 chars) with overlap. Preserves `TextPosition` data (page, bounding box, char offset) per chunk. |
 
 ### Vector Storage & Search
 
@@ -24,8 +31,9 @@ RAG (Retrieval-Augmented Generation) pipeline for document Q&A. Fully serverless
 
 | Component | Service | Why |
 |-----------|---------|-----|
-| **LLM** | Azure OpenAI (gpt-4o-mini) | Fast, cheap, good for RAG. Falls back to gpt-4o for complex queries if needed. |
-| **Orchestration** | Azure Functions | Serverless, scales to zero, integrates with blob triggers. |
+| **LLM** | Azure OpenAI (gpt-4o-mini) | Fast, cheap, good for RAG. Streaming responses via SSE. |
+| **Chat Sessions** | In-memory (IChatSessionService) | Maintains conversation history for follow-up questions. Session ID returned in SSE `done` event. |
+| **Orchestration** | Azure Functions | Serverless, scales to zero, blob triggers for indexing. |
 
 ## Architecture Flow
 
@@ -70,8 +78,10 @@ RAG (Retrieval-Augmented Generation) pipeline for document Q&A. Fully serverless
 │                                                   │                 │
 │                                                   ▼                 │
 │                                          ┌──────────────────┐       │
-│                                          │ Response with    │       │
-│                                          │ page citations   │       │
+│                                          │ SSE Stream:      │       │
+│                                          │ • chunks (text)  │       │
+│                                          │ • sources (refs) │       │
+│                                          │ • done (session) │       │
 │                                          └──────────────────┘       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -138,9 +148,53 @@ Azure OpenAI Service
     { "name": "chunkIndex", "type": "Edm.Int32" },
     { "name": "pageNumber", "type": "Edm.Int32", "filterable": true },
     { "name": "content", "type": "Edm.String", "searchable": true },
-    { "name": "contentVector", "type": "Collection(Edm.Single)", "dimensions": 1536, "vectorSearchProfile": "default" }
+    { "name": "contentVector", "type": "Collection(Edm.Single)", "dimensions": 1536, "vectorSearchProfile": "default" },
+    { "name": "positionsJson", "type": "Edm.String" }
   ]
 }
+```
+
+### Position Data (for PDF highlighting)
+
+Each chunk stores `positionsJson` containing paragraph bounding boxes:
+
+```typescript
+// TextPosition (per paragraph in chunk)
+{
+  pageNumber: number,
+  boundingBox: {
+    x: number,      // inches from left
+    y: number,      // inches from top
+    width: number,  // inches
+    height: number  // inches
+  },
+  charOffset: number,
+  charLength: number
+}
+```
+
+### SSE Response Format
+
+The `/api/documents/{id}/ask` endpoint streams Server-Sent Events:
+
+```
+event: chunk
+data: {"content": "The document states..."}
+
+event: chunk
+data: {"content": " that the main finding..."}
+
+event: sources
+data: {"sources": [
+  {
+    "page": 3,
+    "text": "Preview of source text...",
+    "positions": [{ "pageNumber": 3, "boundingBox": {...}, ... }]
+  }
+]}
+
+event: done
+data: {"sessionId": "abc-123"}
 ```
 
 ## Alternatives Considered
@@ -169,4 +223,40 @@ AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o-mini
 AZURE_SEARCH_ENDPOINT=https://<name>.search.windows.net
 AZURE_SEARCH_KEY=<key>
 AZURE_SEARCH_INDEX=documents-index
+
+# Azure Blob Storage
+StorageConnection=<connection-string>
+DocumentsContainer=documents
 ```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/documents/upload-url` | POST | Get SAS URL for PDF upload |
+| `/api/documents/{id}/download-url` | GET | Get SAS URL for PDF download (15 min expiry) |
+| `/api/documents/{id}/ask` | POST | Ask question, returns SSE stream |
+| `/api/documents/{id}/status` | GET | Get indexing status |
+| `/api/documents` | GET | List all documents |
+| `/api/documents/{id}` | GET | Get document details |
+| `/api/documents/{id}` | DELETE | Delete document |
+
+## Frontend Integration
+
+### PDF Highlighting Flow
+
+1. User asks question → backend returns `sources` with `positions`
+2. User clicks source card in chat
+3. Frontend converts bounding box (inches) → percentage of page:
+   ```typescript
+   left: (boundingBox.x / pageWidth) * 100
+   top: (boundingBox.y / pageHeight) * 100
+   ```
+4. PDF viewer highlights the region and navigates to page
+
+### Chat Session Flow
+
+1. First question → backend creates session, returns `sessionId` in `done` event
+2. Frontend stores `sessionId`
+3. Follow-up questions include `sessionId` in request body
+4. Backend includes conversation history in LLM context

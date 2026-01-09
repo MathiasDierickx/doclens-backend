@@ -2,39 +2,26 @@ using System.Text.Json;
 using DocLens.Api.Models;
 using DocLens.Api.Services;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
-using OpenAI.Chat;
 
 namespace DocLens.Api.Functions;
 
 public class AskFunction
 {
-    private readonly IEmbeddingService _embedding;
-    private readonly ISearchService _search;
-    private readonly ChatClient _chatClient;
+    private readonly IPromptingService _promptingService;
+    private readonly IChatSessionService _chatSessionService;
     private readonly ILogger<AskFunction> _logger;
 
-    private const string SystemPrompt = """
-        You are a helpful assistant that answers questions about documents.
-        Use only the provided context to answer questions.
-        If the answer is not in the context, say "I couldn't find information about that in the document."
-        Always cite the page numbers when referencing information.
-        Be concise and accurate.
-        """;
-
     public AskFunction(
-        IEmbeddingService embedding,
-        ISearchService search,
-        ChatClient chatClient,
+        IPromptingService promptingService,
+        IChatSessionService chatSessionService,
         ILogger<AskFunction> logger)
     {
-        _embedding = embedding;
-        _search = search;
-        _chatClient = chatClient;
+        _promptingService = promptingService;
+        _chatSessionService = chatSessionService;
         _logger = logger;
     }
 
@@ -72,60 +59,57 @@ public class AskFunction
 
         try
         {
-            // Step 1: Generate embedding for the question
-            var embeddings = await _embedding.GenerateEmbeddingsAsync([body.Question], cancellationToken);
-            var queryVector = embeddings[0];
+            // Get or create chat session
+            var sessionId = body.SessionId;
+            IReadOnlyList<ChatMessage>? chatHistory = null;
 
-            // Step 2: Search for relevant chunks
-            var chunks = await _search.SearchAsync(queryVector, documentId, topK: 5, cancellationToken);
-
-            if (chunks.Count == 0)
+            if (!string.IsNullOrEmpty(sessionId))
             {
-                await SendSseEvent(response, "chunk", new { content = "I couldn't find any relevant information in this document." }, cancellationToken);
-                await SendSseEvent(response, "done", new { }, cancellationToken);
-                return;
+                // Existing session - get history
+                chatHistory = await _chatSessionService.GetHistoryAsync(sessionId, cancellationToken: cancellationToken);
+            }
+            else
+            {
+                // Create new session
+                var session = await _chatSessionService.CreateSessionAsync(documentId, cancellationToken);
+                sessionId = session.SessionId;
             }
 
-            // Step 3: Build context from chunks
-            var context = string.Join("\n\n", chunks.Select(c =>
-                $"[Page {c.PageNumber}]: {c.Content}"));
+            // Build context with optional chat history
+            var context = await _promptingService.BuildContextAsync(
+                documentId,
+                body.Question,
+                chatHistory,
+                cancellationToken);
 
-            // Step 4: Generate response with streaming
-            var messages = new List<ChatMessage>
-            {
-                new SystemChatMessage(SystemPrompt),
-                new UserChatMessage($"Context:\n{context}\n\nQuestion: {body.Question}")
-            };
+            // Store user message in session
+            await _chatSessionService.AddMessageAsync(
+                sessionId,
+                new ChatMessage("user", body.Question, DateTime.UtcNow),
+                cancellationToken);
 
-            await foreach (var update in _chatClient.CompleteChatStreamingAsync(messages, cancellationToken: cancellationToken))
+            // Generate and stream the answer
+            var fullAnswer = new System.Text.StringBuilder();
+            await foreach (var token in _promptingService.GenerateAnswerStreamAsync(context, cancellationToken))
             {
-                foreach (var part in update.ContentUpdate)
-                {
-                    if (!string.IsNullOrEmpty(part.Text))
-                    {
-                        await SendSseEvent(response, "chunk", new { content = part.Text }, cancellationToken);
-                    }
-                }
+                fullAnswer.Append(token);
+                await SendSseEvent(response, "chunk", new { content = token }, cancellationToken);
             }
 
-            // Step 5: Send source references with positions for PDF highlighting
-            var sources = chunks
-                .GroupBy(c => c.PageNumber)
-                .Select(g =>
-                {
-                    var firstChunk = g.First();
-                    return new SourceReference(
-                        g.Key,
-                        firstChunk.Content[..Math.Min(200, firstChunk.Content.Length)] + "...",
-                        firstChunk.GetPositions()
-                    );
-                })
-                .ToList();
+            // Store assistant response in session
+            await _chatSessionService.AddMessageAsync(
+                sessionId,
+                new ChatMessage("assistant", fullAnswer.ToString(), DateTime.UtcNow),
+                cancellationToken);
 
+            // Send source references
+            var sources = _promptingService.GetSourceReferences(context);
             await SendSseEvent(response, "sources", new { sources }, cancellationToken);
-            await SendSseEvent(response, "done", new { }, cancellationToken);
 
-            _logger.LogInformation("Successfully answered question for document {DocumentId}", documentId);
+            // Send completion with session ID for follow-up questions
+            await SendSseEvent(response, "done", new { sessionId }, cancellationToken);
+
+            _logger.LogInformation("Successfully answered question for document {DocumentId}, session {SessionId}", documentId, sessionId);
         }
         catch (Exception ex)
         {

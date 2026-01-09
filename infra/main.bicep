@@ -18,6 +18,9 @@ param functionAppName string = ''
 @description('Name of the storage account')
 param storageAccountName string = ''
 
+@description('Skip AI services deployment (set to true if already deployed)')
+param skipAiServices bool = false
+
 // Tags that should be applied to all resources
 var tags = {
   'azd-env-name': environmentName
@@ -45,10 +48,13 @@ module aiServices 'modules/ai-services.bicep' = {
   }
 }
 
-// Function App module
+// Function App module - depends on AI services being fully deployed
 module functionApp 'modules/function-app.bicep' = {
   name: 'functionApp'
   scope: rg
+  dependsOn: [
+    aiServices
+  ]
   params: {
     location: location
     tags: tags

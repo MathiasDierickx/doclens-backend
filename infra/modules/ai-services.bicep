@@ -10,6 +10,9 @@ param resourceToken string
 @description('Azure OpenAI location (Sweden Central has quota for GlobalStandard)')
 param openAILocation string = 'swedencentral'
 
+@description('Azure AI Search location (North Europe due to West Europe provisioning issues)')
+param searchLocation string = 'northeurope'
+
 // Document Intelligence (Form Recognizer)
 resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: 'di-doclens-${resourceToken}'
@@ -75,30 +78,33 @@ resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-0
   }
 }
 
-// Azure AI Search
+// Azure AI Search (basic tier - free tier quota exceeded)
+// Generate unique name based on resource group ID to avoid conflicts
+var searchToken = toLower(uniqueString(resourceGroup().id, 'search'))
 resource searchService 'Microsoft.Search/searchServices@2023-11-01' = {
-  name: 'srch-doclens-${resourceToken}'
-  location: location
+  name: 'srch${searchToken}'
+  location: searchLocation
   tags: tags
   sku: {
-    name: 'free' // Free tier: 50MB storage, 3 indexes
+    name: 'basic' // Basic tier: 2GB storage, 15 indexes (~$25/month)
   }
   properties: {
     replicaCount: 1
     partitionCount: 1
     hostingMode: 'default'
     publicNetworkAccess: 'enabled'
-    semanticSearch: 'disabled' // Not available on free tier
+    semanticSearch: 'disabled'
   }
 }
 
 // Table Storage for indexing job status (uses existing storage account)
 // This is configured in function-app.bicep
 
-// Outputs
+// Outputs - note: listKeys() is called after all deployments complete via implicit dependencies
 output documentIntelligenceEndpoint string = documentIntelligence.properties.endpoint
 output documentIntelligenceKey string = documentIntelligence.listKeys().key1
 
+// OpenAI outputs - reference deployment names to create implicit dependency
 output openAIEndpoint string = openAI.properties.endpoint
 output openAIKey string = openAI.listKeys().key1
 output embeddingDeploymentName string = embeddingDeployment.name
