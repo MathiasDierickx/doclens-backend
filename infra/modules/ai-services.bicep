@@ -7,8 +7,8 @@ param tags object
 @description('Unique suffix for resource names')
 param resourceToken string
 
-@description('Azure OpenAI location (limited availability)')
-param openAILocation string = 'swedencentral'
+@description('Azure OpenAI location (limited availability - text-embedding-3-small requires specific regions)')
+param openAILocation string = 'switzerlandnorth' // Closest to West Europe with text-embedding-3-small support
 
 // Document Intelligence (Form Recognizer)
 resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' = {

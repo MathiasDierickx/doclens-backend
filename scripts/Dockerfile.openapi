@@ -19,16 +19,23 @@ WORKDIR /app
 
 # Copy project files
 COPY src/DocLens.Api/ ./src/DocLens.Api/
+COPY tests/DocLens.Api.Tests/ ./tests/DocLens.Api.Tests/
 COPY DocLens.sln .
 COPY global.json .
 
 # Build
-RUN dotnet build -c Release
+RUN dotnet build src/DocLens.Api/DocLens.Api.csproj -c Release
+
+# Install Azurite for local storage emulation
+RUN npm install -g azurite
 
 # Create extraction script
 RUN printf '#!/bin/bash\n\
 set -e\n\
 cd /app/src/DocLens.Api\n\
+echo "Starting Azurite..."\n\
+azurite --silent --location /tmp/azurite --debug /tmp/azurite.log &\n\
+sleep 3\n\
 echo "Starting Azure Functions..."\n\
 func start > /tmp/func.log 2>&1 &\n\
 FUNC_PID=$!\n\

@@ -11,6 +11,46 @@
     }
   ],
   "paths": {
+    "/documents/{documentId}/ask": {
+      "post": {
+        "tags": [
+          "Documents"
+        ],
+        "operationId": "askQuestion",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/askRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "SSE stream of answer chunks",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/documents/upload-url": {
       "post": {
         "tags": [
@@ -213,10 +253,48 @@
           }
         }
       }
+    },
+    "/documents/{documentId}/status": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "operationId": "getIndexingStatus",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE stream of indexing status",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "askRequest": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          }
+        }
+      },
       "deleteDocumentResponse": {
         "type": "object",
         "properties": {
