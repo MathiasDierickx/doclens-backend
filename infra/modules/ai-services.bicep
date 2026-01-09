@@ -7,8 +7,8 @@ param tags object
 @description('Unique suffix for resource names')
 param resourceToken string
 
-@description('Azure OpenAI location (Sweden Central for text-embedding-3-small availability)')
-param openAILocation string = 'swedencentral'
+@description('Azure OpenAI location')
+param openAILocation string = 'westeurope'
 
 // Document Intelligence (Form Recognizer)
 resource documentIntelligence 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
@@ -40,12 +40,12 @@ resource openAI 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   }
 }
 
-// Azure OpenAI Embedding Deployment
+// Azure OpenAI Embedding Deployment (GlobalStandard for wider region availability)
 resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
   parent: openAI
   name: 'text-embedding-3-small'
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'
     capacity: 120 // 120K tokens per minute
   }
   properties: {
@@ -57,13 +57,13 @@ resource embeddingDeployment 'Microsoft.CognitiveServices/accounts/deployments@2
   }
 }
 
-// Azure OpenAI Chat Deployment
+// Azure OpenAI Chat Deployment (GlobalStandard for wider region availability)
 resource chatDeployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = {
   parent: openAI
   name: 'gpt-4o-mini'
   dependsOn: [embeddingDeployment] // Deploy sequentially to avoid rate limits
   sku: {
-    name: 'Standard'
+    name: 'GlobalStandard'
     capacity: 30 // 30K tokens per minute
   }
   properties: {
