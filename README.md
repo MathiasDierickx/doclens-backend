@@ -53,49 +53,90 @@ The API will be available at `http://localhost:7071`.
 |----------|--------|-------------|
 | `/api/health` | GET | Health check |
 | `/api/hello?name=Your Name` | GET | Hello world test |
+| `/api/documents/upload-url?filename=doc.pdf` | POST | Get SAS URL for direct upload |
+| `/api/documents` | GET | List all uploaded documents |
+| `/api/documents/{documentId}` | DELETE | Delete a document |
 
 ## Deployment to Azure
 
-### 1. Install Azure Developer CLI
+### 1. Create Azure Account
+
+If you don't have an Azure account, create one at [azure.microsoft.com/free](https://azure.microsoft.com/free).
+You get €170 free credit for the first 30 days.
+
+### 2. Install CLIs
 
 ```bash
-# macOS
+# Azure CLI
+brew install azure-cli
+
+# Azure Developer CLI (azd)
 brew tap azure/azd && brew install azd
-
-# Windows
-winget install microsoft.azd
-
-# Linux
-curl -fsSL https://aka.ms/install-azd.sh | bash
 ```
 
-### 2. Login to Azure
+### 3. Login to Azure
 
 ```bash
+# Login to Azure CLI (needed for resource provider registration)
+az login
+
+# Login to Azure Developer CLI
 azd auth login
 ```
 
-### 3. Initialize and deploy
+### 4. Register Required Resource Providers
+
+For a new Azure subscription, you may need to register resource providers:
 
 ```bash
-# Initialize environment (first time only)
+az provider register --namespace microsoft.operationalinsights
+az provider register --namespace Microsoft.Web
+az provider register --namespace Microsoft.Storage
+```
+
+Check registration status:
+
+```bash
+az provider show --namespace microsoft.operationalinsights --query "registrationState" -o tsv
+```
+
+### 5. Initialize and Deploy
+
+```bash
+# Initialize environment (first time only - choose environment name like 'dev')
 azd init
 
-# Provision infrastructure and deploy
+# Set your preferred Azure region (optional, will be prompted if not set)
+azd env set AZURE_LOCATION belgiumcentral
+
+# Provision infrastructure and deploy code
 azd up
 ```
 
-This will:
-- Create a resource group
-- Deploy Azure Functions (Consumption plan)
-- Deploy Application Insights
-- Deploy Storage Account
-- Deploy your code
+This creates:
+- Resource group: `rg-doclens-{env}`
+- Azure Functions (Consumption plan - serverless)
+- Application Insights (monitoring)
+- Storage Account
 
-### 4. View deployed resources
+### 6. View Deployed Resources
 
 ```bash
+# Show deployment info
 azd show
+
+# Get the Function App URL
+azd env get-values | grep AZURE_FUNCTION_APP_URL
+```
+
+### 7. Test the Deployment
+
+```bash
+# Health check
+curl https://<your-function-app>.azurewebsites.net/api/health
+
+# Hello endpoint
+curl "https://<your-function-app>.azurewebsites.net/api/hello?name=World"
 ```
 
 ## Project Structure
