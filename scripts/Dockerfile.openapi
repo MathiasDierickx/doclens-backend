@@ -1,0 +1,45 @@
+# Dockerfile for extracting OpenAPI spec
+# Build: docker build -f scripts/Dockerfile.openapi -t doclens-openapi .
+# Run:   docker run --rm -v $(pwd):/output doclens-openapi
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+
+# Install Azure Functions Core Tools
+RUN apt-get update && \
+    apt-get install -y curl jq && \
+    curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
+    npm install -g azure-functions-core-tools@4 --unsafe-perm true
+
+WORKDIR /app
+
+# Copy project files
+COPY src/DocLens.Api/ ./src/DocLens.Api/
+COPY DocLens.sln .
+COPY global.json .
+
+# Build
+RUN dotnet build -c Release
+
+# Create extraction script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+cd /app/src/DocLens.Api\n\
+func start &\n\
+FUNC_PID=$!\n\
+echo "Waiting for Functions to start..."\n\
+sleep 15\n\
+for i in {1..30}; do\n\
+  if curl -s http://localhost:7071/api/health > /dev/null 2>&1; then\n\
+    echo "Functions started!"\n\
+    break\n\
+  fi\n\
+  sleep 2\n\
+done\n\
+echo "Fetching OpenAPI spec..."\n\
+curl -s http://localhost:7071/api/openapi/v3.json | jq . > /output/openapi.json\n\
+echo "Saved to /output/openapi.json"\n\
+kill $FUNC_PID 2>/dev/null || true\n\
+' > /extract.sh && chmod +x /extract.sh
+
+# Default command
+CMD ["/extract.sh"]

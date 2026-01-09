@@ -153,14 +153,45 @@ doclens-backend/
     └── DocLens.Api/        # Azure Functions project
         ├── Functions/
         │   ├── HealthFunction.cs
-        │   └── HelloFunction.cs
+        │   ├── HelloFunction.cs
+        │   └── DocumentsFunction.cs
+        ├── Models/
+        │   └── DocumentModels.cs
         └── Program.cs
+```
+
+## OpenAPI / Swagger
+
+The API includes OpenAPI 3.0 documentation with Swagger UI.
+
+### Endpoints (when running)
+
+| URL | Description |
+|-----|-------------|
+| `/api/swagger/ui` | Swagger UI |
+| `/api/openapi/v3.json` | OpenAPI 3.0 spec (JSON) |
+| `/api/openapi/v3.yaml` | OpenAPI 3.0 spec (YAML) |
+
+### Extract OpenAPI Spec
+
+To extract the OpenAPI spec to a file:
+
+```bash
+# Option 1: Shell script (requires func running or starts it)
+./scripts/extract-openapi.sh openapi.json
+
+# Option 2: Manual (when func is running)
+curl http://localhost:7071/api/openapi/v3.json > openapi.json
+
+# Option 3: Docker (no local dependencies needed)
+docker build -f scripts/Dockerfile.openapi -t doclens-openapi .
+docker run --rm -v $(pwd):/output doclens-openapi
 ```
 
 ## Next Steps
 
 - [ ] Add CosmosDB for document metadata
-- [ ] Add Azure Blob Storage for PDF storage
+- [x] Add Azure Blob Storage for PDF storage
 - [ ] Integrate Azure Document Intelligence for PDF parsing
 - [ ] Integrate Azure OpenAI for Q&A
-- [ ] Add OpenAPI/Swagger documentation
+- [x] Add OpenAPI/Swagger documentation
