@@ -23,11 +23,22 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
     supportsHttpsTrafficOnly: true
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
+  }
+}
+
+// Blob Service with CORS configuration
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
+  properties: {
     cors: {
       corsRules: [
         {
-          allowedOrigins: ['http://localhost:3000', 'https://*.vercel.app']
-          allowedMethods: ['GET', 'PUT', 'OPTIONS']
+          allowedOrigins: [
+            'http://localhost:3000'
+            'https://doclens-app.vercel.app'
+          ]
+          allowedMethods: ['GET', 'PUT', 'OPTIONS', 'HEAD']
           allowedHeaders: ['*']
           exposedHeaders: ['*']
           maxAgeInSeconds: 3600
@@ -35,12 +46,6 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
       ]
     }
   }
-}
-
-// Blob Service
-resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
-  parent: storageAccount
-  name: 'default'
 }
 
 // Container for uploaded documents
