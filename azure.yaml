@@ -1,0 +1,9 @@
+name: doclens-backend
+metadata:
+  template: azd-init
+
+services:
+  api:
+    project: ./src/DocLens.Api
+    language: csharp
+    host: function
