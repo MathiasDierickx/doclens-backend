@@ -33,12 +33,51 @@ Create `src/DocLens.Api/local.settings.json`:
   "IsEncrypted": false,
   "Values": {
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
-    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated"
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+    "StorageConnection": "<your-storage-connection-string>",
+    "DocumentsContainer": "documents"
+  },
+  "Host": {
+    "CORS": "http://localhost:3000",
+    "CORSCredentials": false
   }
 }
 ```
 
-### 3. Run locally
+### 3. Configure Storage Connection
+
+For the document upload/list functionality, you need Azure Blob Storage. You have two options:
+
+**Option A: Use Azure Storage (recommended for full testing)**
+
+Get your storage connection string after deploying to Azure:
+
+```bash
+# Get storage account name
+az storage account list --resource-group rg-doclens-dev --query "[0].name" -o tsv
+
+# Get connection string
+az storage account show-connection-string --name <storage-account-name> --resource-group rg-doclens-dev --query connectionString -o tsv
+```
+
+Set the `StorageConnection` value in `local.settings.json` to this connection string.
+
+**Option B: Use Azurite (local storage emulator)**
+
+```bash
+# Install Azurite globally
+npm install -g azurite
+
+# Start Azurite (in a separate terminal)
+azurite --silent --location ./azurite-data
+
+# Create the documents container
+az storage container create --name documents --connection-string "UseDevelopmentStorage=true"
+```
+
+Then set `StorageConnection` to `"UseDevelopmentStorage=true"`.
+
+### 4. Run locally
 
 ```bash
 cd src/DocLens.Api
@@ -46,6 +85,8 @@ func start
 ```
 
 The API will be available at `http://localhost:7071`.
+
+> **Note:** The `local.settings.json` file is in `.gitignore` and should not be committed as it may contain secrets.
 
 ### Available Endpoints
 
