@@ -111,6 +111,46 @@ public class DocumentsFunction(ILogger<DocumentsFunction> logger, IConfiguration
         return new OkObjectResult(new DocumentListResponse(documents));
     }
 
+    [Function("GetDocument")]
+    [OpenApiOperation(operationId: "getDocument", tags: ["Documents"], Summary = "Get document", Description = "Get a document by ID")]
+    [OpenApiParameter(name: "documentId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Document ID")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.OK, contentType: "application/json", bodyType: typeof(DocumentInfo), Description = "Document details")]
+    [OpenApiResponseWithBody(statusCode: HttpStatusCode.NotFound, contentType: "application/json", bodyType: typeof(ErrorResponse), Description = "Document not found")]
+    public async Task<IActionResult> GetDocument(
+        [HttpTrigger(AuthorizationLevel.Anonymous, "get", Route = "documents/{documentId}")] HttpRequest req,
+        string documentId)
+    {
+        logger.LogInformation("Document requested: {DocumentId}", documentId);
+
+        var connectionString = configuration["StorageConnection"];
+        var containerName = configuration["DocumentsContainer"] ?? "documents";
+
+        if (string.IsNullOrEmpty(connectionString))
+        {
+            logger.LogError("StorageConnection not configured");
+            return new StatusCodeResult(500);
+        }
+
+        var blobServiceClient = new BlobServiceClient(connectionString);
+        var containerClient = blobServiceClient.GetBlobContainerClient(containerName);
+
+        await foreach (var blobItem in containerClient.GetBlobsAsync(BlobTraits.None, BlobStates.None, $"{documentId}/", default))
+        {
+            var parts = blobItem.Name.Split('/');
+            if (parts.Length >= 2)
+            {
+                return new OkObjectResult(new DocumentInfo(
+                    DocumentId: parts[0],
+                    Filename: parts[1],
+                    Size: blobItem.Properties.ContentLength,
+                    UploadedAt: blobItem.Properties.CreatedOn
+                ));
+            }
+        }
+
+        return new NotFoundObjectResult(new ErrorResponse("Document not found"));
+    }
+
     [Function("DeleteDocument")]
     [OpenApiOperation(operationId: "deleteDocument", tags: ["Documents"], Summary = "Delete document", Description = "Delete a document by ID")]
     [OpenApiParameter(name: "documentId", In = ParameterLocation.Path, Required = true, Type = typeof(string), Description = "Document ID")]
