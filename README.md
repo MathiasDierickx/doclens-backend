@@ -4,13 +4,13 @@ Document Q&A API powered by Azure Functions and Azure AI Services.
 
 ## Architecture
 
-- **Runtime**: .NET 8 Azure Functions (Isolated Worker)
+- **Runtime**: .NET 9 Azure Functions (Isolated Worker)
 - **Hosting**: Azure Functions Consumption Plan (serverless)
 - **Infrastructure**: Bicep + Azure Developer CLI (azd)
 
 ## Prerequisites
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - [Azure Functions Core Tools v4](https://docs.microsoft.com/azure/azure-functions/functions-run-local)
 - [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
 - [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) (for authentication)
