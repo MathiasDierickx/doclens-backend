@@ -1,0 +1,277 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "DocLens API",
+    "description": "Document Q&A API - Upload PDFs and ask questions about their content",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:7071/api"
+    }
+  ],
+  "paths": {
+    "/documents/upload-url": {
+      "post": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Get upload URL",
+        "description": "Generate a SAS URL for direct PDF upload to Azure Blob Storage",
+        "operationId": "getUploadUrl",
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "query",
+            "description": "Filename of the PDF to upload (must end with .pdf)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload URL and document metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/uploadUrlResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid filename or file type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "List documents",
+        "description": "List all uploaded documents",
+        "operationId": "listDocuments",
+        "responses": {
+          "200": {
+            "description": "List of documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/documentListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{documentId}": {
+      "delete": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Delete document",
+        "description": "Delete a document by ID",
+        "operationId": "deleteDocument",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deletion confirmation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/deleteDocumentResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Health check",
+        "description": "Returns the health status of the API",
+        "operationId": "getHealth",
+        "responses": {
+          "200": {
+            "description": "Health status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/healthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/hello": {
+      "get": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Hello world",
+        "description": "Returns a greeting message",
+        "operationId": "sayHello",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Name to greet",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Greeting message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/helloResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "deleteDocumentResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          }
+        }
+      },
+      "documentInfo": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "uploadedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        }
+      },
+      "documentListResponse": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/documentInfo"
+            }
+          }
+        }
+      },
+      "errorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "healthResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "helloResponse": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "uploadUrlResponse": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "uploadUrl": {
+            "type": "string"
+          },
+          "blobName": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

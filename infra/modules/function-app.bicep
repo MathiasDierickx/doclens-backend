@@ -98,6 +98,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         allowedOrigins: [
           'https://portal.azure.com'
           'http://localhost:3000'
+          'https://doclens-app.vercel.app'
+          'https://doclens-app-*.vercel.app'
         ]
         supportCredentials: false
       }

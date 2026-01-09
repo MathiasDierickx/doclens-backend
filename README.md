@@ -172,9 +172,23 @@ The API includes OpenAPI 3.0 documentation with Swagger UI.
 | `/api/openapi/v3.json` | OpenAPI 3.0 spec (JSON) |
 | `/api/openapi/v3.yaml` | OpenAPI 3.0 spec (YAML) |
 
-### Extract OpenAPI Spec
+### Extract OpenAPI Spec & Generate Frontend Types
 
-To extract the OpenAPI spec to a file:
+The backend generates an OpenAPI 3.0 specification that is used to auto-generate fully type-safe API hooks for the frontend (RTK Query). This provides end-to-end type safety from backend to frontend.
+
+**One command to update everything:**
+
+```bash
+./scripts/extract-openapi-docker.sh
+```
+
+This script:
+1. Builds a Docker container with the .NET SDK and Azure Functions Core Tools
+2. Starts the Functions app inside the container
+3. Extracts the OpenAPI spec to `openapi.json`
+4. If `../doclens-app` exists, copies the spec and runs `npm run codegen` to regenerate the frontend API hooks
+
+**Alternative options:**
 
 ```bash
 # Option 1: Shell script (requires func running or starts it)
@@ -182,10 +196,27 @@ To extract the OpenAPI spec to a file:
 
 # Option 2: Manual (when func is running)
 curl http://localhost:7071/api/openapi/v3.json > openapi.json
+```
 
-# Option 3: Docker (no local dependencies needed)
-docker build -f scripts/Dockerfile.openapi -t doclens-openapi .
-docker run --rm -v $(pwd):/output doclens-openapi
+### Frontend Type-Safe API Generation
+
+The frontend (`doclens-app`) uses [RTK Query](https://redux-toolkit.js.org/rtk-query/overview) with automatic code generation from the OpenAPI spec. When you add or modify API endpoints:
+
+1. Update the backend endpoint with OpenAPI attributes
+2. Run `./scripts/extract-openapi-docker.sh`
+3. The frontend gets fully typed hooks like `useGetHealthQuery()`, `useListDocumentsQuery()`, etc.
+
+Example usage in frontend:
+```typescript
+import { useGetHealthQuery, useListDocumentsQuery } from "@/store/api/generatedApi";
+
+function MyComponent() {
+  const { data: health, isLoading } = useGetHealthQuery();
+  const { data: documents } = useListDocumentsQuery();
+
+  // data is fully typed based on the OpenAPI spec!
+  return <div>{health?.status}</div>;
+}
 ```
 
 ## Next Steps
@@ -195,3 +226,4 @@ docker run --rm -v $(pwd):/output doclens-openapi
 - [ ] Integrate Azure Document Intelligence for PDF parsing
 - [ ] Integrate Azure OpenAI for Q&A
 - [x] Add OpenAPI/Swagger documentation
+- [x] Add frontend type-safe API generation (RTK Query codegen)

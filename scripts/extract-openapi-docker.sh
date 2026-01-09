@@ -36,3 +36,30 @@ else
     echo "ERROR: Failed to extract OpenAPI spec"
     exit 1
 fi
+
+# Check if frontend folder exists and run codegen
+FRONTEND_DIR="$PROJECT_DIR/../doclens-app"
+if [ -d "$FRONTEND_DIR" ]; then
+    echo ""
+    echo "Frontend folder found at: $FRONTEND_DIR"
+    echo "Copying OpenAPI spec and running codegen..."
+
+    # Copy OpenAPI spec to frontend
+    cp "$OUTPUT_FILE" "$FRONTEND_DIR/openapi.json"
+    echo "Copied $OUTPUT_FILE to $FRONTEND_DIR/openapi.json"
+
+    # Run codegen in frontend
+    cd "$FRONTEND_DIR"
+    if [ -f "package.json" ] && grep -q '"codegen"' package.json; then
+        echo "Running npm run codegen..."
+        npm run codegen
+        echo ""
+        echo "Frontend API codegen completed!"
+    else
+        echo "Warning: No codegen script found in frontend package.json"
+    fi
+else
+    echo ""
+    echo "Note: Frontend folder not found at $FRONTEND_DIR"
+    echo "Skipping frontend codegen."
+fi
