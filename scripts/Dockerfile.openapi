@@ -2,13 +2,18 @@
 # Build: docker build -f scripts/Dockerfile.openapi -t doclens-openapi .
 # Run:   docker run --rm -v $(pwd):/output doclens-openapi
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0
 
-# Install Azure Functions Core Tools
+# Install Node.js and Azure Functions Core Tools
 RUN apt-get update && \
-    apt-get install -y curl jq && \
-    curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
-    npm install -g azure-functions-core-tools@4 --unsafe-perm true
+    apt-get install -y curl jq gnupg && \
+    # Install Node.js
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y nodejs && \
+    # Install Azure Functions Core Tools
+    npm install -g azure-functions-core-tools@4 --unsafe-perm true && \
+    # Cleanup
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -21,19 +26,25 @@ COPY global.json .
 RUN dotnet build -c Release
 
 # Create extraction script
-RUN echo '#!/bin/bash\n\
+RUN printf '#!/bin/bash\n\
 set -e\n\
 cd /app/src/DocLens.Api\n\
-func start &\n\
+echo "Starting Azure Functions..."\n\
+func start > /tmp/func.log 2>&1 &\n\
 FUNC_PID=$!\n\
 echo "Waiting for Functions to start..."\n\
-sleep 15\n\
-for i in {1..30}; do\n\
+for i in $(seq 1 60); do\n\
   if curl -s http://localhost:7071/api/health > /dev/null 2>&1; then\n\
     echo "Functions started!"\n\
     break\n\
   fi\n\
+  if [ $i -eq 60 ]; then\n\
+    echo "ERROR: Functions failed to start"\n\
+    cat /tmp/func.log\n\
+    exit 1\n\
+  fi\n\
   sleep 2\n\
+  echo "  Waiting... ($((i*2))s)"\n\
 done\n\
 echo "Fetching OpenAPI spec..."\n\
 curl -s http://localhost:7071/api/openapi/v3.json | jq . > /output/openapi.json\n\
