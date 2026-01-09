@@ -96,14 +96,16 @@ public class AskFunction
                 await SendSseEvent(response, "chunk", new { content = token }, cancellationToken);
             }
 
-            // Store assistant response in session
+            // Get source references
+            var sources = _promptingService.GetSourceReferences(context);
+
+            // Store assistant response in session (including sources)
             await _chatSessionService.AddMessageAsync(
                 sessionId,
-                new ChatMessage("assistant", fullAnswer.ToString(), DateTime.UtcNow),
+                new ChatMessage("assistant", fullAnswer.ToString(), DateTime.UtcNow, sources),
                 cancellationToken);
 
-            // Send source references
-            var sources = _promptingService.GetSourceReferences(context);
+            // Send source references to client
             await SendSseEvent(response, "sources", new { sources }, cancellationToken);
 
             // Send completion with session ID for follow-up questions

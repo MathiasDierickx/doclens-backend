@@ -573,6 +573,66 @@
           "timestamp": {
             "type": "string",
             "format": "date-time"
+          },
+          "sources": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "$ref": "#/components/schemas/sourceReference"
+            }
+          }
+        }
+      },
+      "sourceReference": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          },
+          "positions": {
+            "type": "array",
+            "nullable": true,
+            "items": {
+              "$ref": "#/components/schemas/textPosition"
+            }
+          }
+        }
+      },
+      "textPosition": {
+        "type": "object",
+        "properties": {
+          "pageNumber": {
+            "type": "integer"
+          },
+          "boundingBox": {
+            "$ref": "#/components/schemas/boundingBox",
+            "nullable": true
+          },
+          "charOffset": {
+            "type": "integer"
+          },
+          "charLength": {
+            "type": "integer"
+          }
+        }
+      },
+      "boundingBox": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number"
+          },
+          "y": {
+            "type": "number"
+          },
+          "width": {
+            "type": "number"
+          },
+          "height": {
+            "type": "number"
           }
         }
       },

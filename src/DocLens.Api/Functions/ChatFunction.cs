@@ -69,7 +69,8 @@ public class ChatFunction
         var messages = session.Messages.Select(m => new ChatMessageDto(
             m.Role,
             m.Content,
-            m.Timestamp
+            m.Timestamp,
+            m.Sources
         )).ToList();
 
         return new OkObjectResult(new ChatHistoryResponse(

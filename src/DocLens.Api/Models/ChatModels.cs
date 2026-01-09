@@ -6,7 +6,8 @@ namespace DocLens.Api.Models;
 public record ChatMessage(
     string Role,
     string Content,
-    DateTime Timestamp
+    DateTime Timestamp,
+    IReadOnlyList<SourceReference>? Sources = null
 );
 
 /// <summary>
