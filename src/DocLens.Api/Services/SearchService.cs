@@ -56,7 +56,16 @@ public class SearchService : ISearchService
             }
         };
 
-        await _indexClient.CreateOrUpdateIndexAsync(index, cancellationToken: cancellationToken);
+        try
+        {
+            await _indexClient.CreateOrUpdateIndexAsync(index, cancellationToken: cancellationToken);
+        }
+        catch (Azure.RequestFailedException ex) when (ex.Status == 400 && ex.Message.Contains("cannot be changed"))
+        {
+            // Schema change requires recreating the index - delete and recreate
+            await _indexClient.DeleteIndexAsync(_indexName, cancellationToken);
+            await _indexClient.CreateIndexAsync(index, cancellationToken);
+        }
     }
 
     public async Task IndexChunksAsync(
