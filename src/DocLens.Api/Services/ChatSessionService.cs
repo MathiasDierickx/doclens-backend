@@ -65,7 +65,14 @@ public class ChatSessionService : IChatSessionService
         var messagesJson = entity.GetString("MessagesJson") ?? "[]";
         var messages = JsonSerializer.Deserialize<List<ChatMessage>>(messagesJson, JsonOptions) ?? [];
 
-        messages.Add(message);
+        // Store message without full source content to avoid exceeding Azure Table's 64KB limit
+        // Keep only page numbers and scores for reference, not full text/positions
+        var compactSources = message.Sources?
+            .Select(s => new SourceReference(s.Page, Text: "", Positions: null, s.RelevanceScore))
+            .ToList();
+        var compactMessage = message with { Sources = compactSources };
+
+        messages.Add(compactMessage);
 
         entity["MessagesJson"] = JsonSerializer.Serialize(messages, JsonOptions);
         entity["UpdatedAt"] = DateTime.UtcNow;
