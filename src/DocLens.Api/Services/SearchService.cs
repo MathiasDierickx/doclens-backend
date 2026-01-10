@@ -168,17 +168,19 @@ public class SearchService : ISearchService
         }
 
         // Fetch all needed chunks in a single query
-        var filter = $"documentId eq '{documentId}' and (";
-        filter += string.Join(" or ", neededIndices.Select(i => $"chunkIndex eq {i}"));
-        filter += ")";
+        // Build OR filter for chunk indices (search.in only works with strings)
+        var chunkFilter = string.Join(" or ", neededIndices.OrderBy(i => i).Select(i => $"chunkIndex eq {i}"));
+        var filter = $"documentId eq '{documentId}' and ({chunkFilter})";
 
         var options = new SearchOptions
         {
             Filter = filter,
-            Size = neededIndices.Count
+            Size = neededIndices.Count,
+            QueryType = SearchQueryType.Simple
         };
 
-        var response = await _searchClient.SearchAsync<SearchDocument>("*", options, cancellationToken);
+        // Use empty search text with filter to fetch specific chunks
+        var response = await _searchClient.SearchAsync<SearchDocument>(null, options, cancellationToken);
         var allChunks = new Dictionary<int, DocumentChunk>();
 
         await foreach (var result in response.Value.GetResultsAsync())
