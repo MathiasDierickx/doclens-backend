@@ -641,6 +641,16 @@
           "charLength": {
             "type": "integer",
             "format": "int32"
+          },
+          "pageWidth": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
+          },
+          "pageHeight": {
+            "type": "number",
+            "format": "float",
+            "nullable": true
           }
         }
       },

@@ -102,7 +102,9 @@ public class ChunkingService : IChunkingService
                     page.PageNumber,
                     para.BoundingBox,
                     para.CharOffset,
-                    para.CharLength
+                    para.CharLength,
+                    page.Width,    // Include page dimensions for coordinate conversion
+                    page.Height
                 ));
             }
         }

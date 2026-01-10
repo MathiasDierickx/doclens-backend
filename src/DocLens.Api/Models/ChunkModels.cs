@@ -19,7 +19,9 @@ public record TextPosition(
     int PageNumber,
     BoundingBox? BoundingBox,
     int CharOffset,  // Character offset within the page
-    int CharLength   // Character length of this span
+    int CharLength,  // Character length of this span
+    float? PageWidth = null,   // Page width in inches (for coordinate conversion)
+    float? PageHeight = null   // Page height in inches (for coordinate conversion)
 );
 
 public record TextChunk(
