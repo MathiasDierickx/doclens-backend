@@ -1,6 +1,7 @@
 using DocLens.Api.Models;
 using DocLens.Api.Services;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using OpenAI.Chat;
 using Xunit;
@@ -13,6 +14,7 @@ public class PromptingServiceTests
     private readonly Mock<IEmbeddingService> _mockEmbeddingService;
     private readonly Mock<ISearchService> _mockSearchService;
     private readonly Mock<ChatClient> _mockChatClient;
+    private readonly Mock<ILogger<PromptingService>> _mockLogger;
     private readonly IPromptingService _sut;
 
     public PromptingServiceTests()
@@ -20,10 +22,12 @@ public class PromptingServiceTests
         _mockEmbeddingService = new Mock<IEmbeddingService>();
         _mockSearchService = new Mock<ISearchService>();
         _mockChatClient = new Mock<ChatClient>();
+        _mockLogger = new Mock<ILogger<PromptingService>>();
         _sut = new PromptingService(
             _mockEmbeddingService.Object,
             _mockSearchService.Object,
-            _mockChatClient.Object);
+            _mockChatClient.Object,
+            _mockLogger.Object);
     }
 
     [Fact]

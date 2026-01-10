@@ -77,6 +77,12 @@ public class IndexingFunction
                 DocumentChunk.Create($"{documentId}_{chunk.ChunkIndex}", documentId, chunk, vector)
             ).ToList();
 
+            // Log position data for debugging
+            var chunksWithPositions = documentChunks.Count(c => !string.IsNullOrEmpty(c.PositionsJson));
+            _logger.LogInformation(
+                "Document {DocumentId}: {Total} chunks, {WithPositions} with position data",
+                documentId, documentChunks.Count, chunksWithPositions);
+
             // Step 5: Index in AI Search
             await _status.UpdateStatusAsync(documentId, IndexingStatus.Indexing, 80, "Indexing in search...", cancellationToken: cancellationToken);
 

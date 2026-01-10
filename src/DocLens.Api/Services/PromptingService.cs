@@ -1,5 +1,6 @@
 using System.Runtime.CompilerServices;
 using DocLens.Api.Models;
+using Microsoft.Extensions.Logging;
 using OpenAI.Chat;
 using ModelsChatMessage = DocLens.Api.Models.ChatMessage;
 using OpenAIChatMessage = OpenAI.Chat.ChatMessage;
@@ -11,6 +12,7 @@ public class PromptingService : IPromptingService
     private readonly IEmbeddingService _embeddingService;
     private readonly ISearchService _searchService;
     private readonly ChatClient _chatClient;
+    private readonly ILogger<PromptingService> _logger;
 
     private const string SystemPrompt = """
         You are a helpful assistant that answers questions about documents.
@@ -30,11 +32,13 @@ public class PromptingService : IPromptingService
     public PromptingService(
         IEmbeddingService embeddingService,
         ISearchService searchService,
-        ChatClient chatClient)
+        ChatClient chatClient,
+        ILogger<PromptingService> logger)
     {
         _embeddingService = embeddingService;
         _searchService = searchService;
         _chatClient = chatClient;
+        _logger = logger;
     }
 
     public async Task<PromptContext> BuildContextAsync(
@@ -93,6 +97,15 @@ public class PromptingService : IPromptingService
         foreach (var searchResult in context.RelevantChunks)
         {
             var page = searchResult.Chunk.PageNumber;
+
+            // Debug logging
+            _logger.LogInformation(
+                "Chunk {ChunkId} page {Page}: PositionsJson is {Status}, length = {Length}",
+                searchResult.Chunk.Id,
+                page,
+                string.IsNullOrEmpty(searchResult.Chunk.PositionsJson) ? "NULL/EMPTY" : "PRESENT",
+                searchResult.Chunk.PositionsJson?.Length ?? 0);
+
             if (!pageScores.TryGetValue(page, out var existing) || searchResult.Score > existing.maxScore)
             {
                 pageScores[page] = (searchResult, searchResult.Score);
@@ -110,10 +123,16 @@ public class PromptingService : IPromptingService
                     ? content[..MaxContentPreviewLength] + "..."
                     : content;
 
+                var positions = chunk.GetPositions();
+                _logger.LogInformation(
+                    "Source for page {Page}: {PositionCount} positions",
+                    chunk.PageNumber,
+                    positions?.Count ?? 0);
+
                 return new SourceReference(
                     chunk.PageNumber,
                     text,
-                    chunk.GetPositions(),
+                    positions,
                     x.maxScore
                 );
             })
