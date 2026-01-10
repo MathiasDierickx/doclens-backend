@@ -78,17 +78,17 @@ public class ChatSessionService : IChatSessionService
         var timestamp = message.Timestamp.ToString("o"); // ISO 8601 format for proper sorting
         var rowKey = $"msg_{timestamp}_{Guid.NewGuid().ToString()[..8]}";
 
-        // Compact sources to save space (keep page + score, not full text)
-        var compactSources = message.Sources?
-            .Select(s => new SourceReference(s.Page, Text: "", Positions: null, s.RelevanceScore))
-            .ToList();
+        // Serialize sources with full position data for PDF highlighting after page reload
+        var sourcesJson = message.Sources != null
+            ? JsonSerializer.Serialize(message.Sources, JsonOptions)
+            : null;
 
         var entity = new TableEntity(sessionId, rowKey)
         {
             { "Role", message.Role },
             { "Content", message.Content },
             { "Timestamp", message.Timestamp },
-            { "SourcesJson", compactSources != null ? JsonSerializer.Serialize(compactSources, JsonOptions) : null }
+            { "SourcesJson", sourcesJson }
         };
 
         await _tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace, cancellationToken);
