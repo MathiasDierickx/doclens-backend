@@ -2,8 +2,10 @@
   "profiles": {
     "DocLens.Api": {
       "commandName": "Project",
-      "commandLineArgs": "--port 7198",
-      "launchBrowser": false
+      "launchBrowser": false,
+      "environmentVariables": {
+        "AZURE_FUNCTIONS_ENVIRONMENT": "Development"
+      }
     }
   }
 }
