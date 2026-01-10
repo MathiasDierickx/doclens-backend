@@ -83,15 +83,18 @@ public class SearchService : ISearchService
     }
 
     public async Task<IReadOnlyList<ChunkSearchResult>> SearchAsync(
+        string queryText,
         float[] queryVector,
         string documentId,
         int topK = 5,
         CancellationToken cancellationToken = default)
     {
+        // Use hybrid search: combines keyword (BM25) + vector search with RRF ranking
         var searchOptions = new SearchOptions
         {
             Filter = $"documentId eq '{documentId}'",
             Size = topK,
+            QueryType = SearchQueryType.Simple,  // Enable keyword search
             VectorSearch = new VectorSearchOptions
             {
                 Queries =
@@ -105,7 +108,9 @@ public class SearchService : ISearchService
             }
         };
 
-        var response = await _searchClient.SearchAsync<SearchDocument>(null, searchOptions, cancellationToken);
+        // Pass queryText for keyword search (searches the 'content' field)
+        // Azure AI Search combines both using Reciprocal Rank Fusion (RRF)
+        var response = await _searchClient.SearchAsync<SearchDocument>(queryText, searchOptions, cancellationToken);
         var results = new List<ChunkSearchResult>();
 
         await foreach (var result in response.Value.GetResultsAsync())
@@ -120,7 +125,7 @@ public class SearchService : ISearchService
                 [],  // Don't return vector in search results
                 doc.TryGetValue("positionsJson", out var posJson) ? posJson?.ToString() : null
             );
-            // Azure AI Search returns scores between 0 and 1 for vector search
+            // RRF score is typically between 0 and 1, normalized
             var score = result.Score ?? 0.0;
             results.Add(new ChunkSearchResult(chunk, score));
         }

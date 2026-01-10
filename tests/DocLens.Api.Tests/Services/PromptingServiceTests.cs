@@ -46,6 +46,7 @@ public class PromptingServiceTests
 
         _mockSearchService
             .Setup(x => x.SearchAsync(
+                question,
                 embedding,
                 documentId,
                 It.IsAny<int>(),
@@ -83,6 +84,7 @@ public class PromptingServiceTests
 
         _mockSearchService
             .Setup(x => x.SearchAsync(
+                It.IsAny<string>(),
                 It.IsAny<float[]>(),
                 documentId,
                 It.IsAny<int>(),
@@ -116,6 +118,7 @@ public class PromptingServiceTests
 
         _mockSearchService
             .Setup(x => x.SearchAsync(
+                It.IsAny<string>(),
                 It.IsAny<float[]>(),
                 documentId,
                 It.IsAny<int>(),

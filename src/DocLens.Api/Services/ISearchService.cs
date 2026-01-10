@@ -14,14 +14,17 @@ public interface ISearchService
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Searches for relevant chunks using vector similarity.
+    /// Searches for relevant chunks using hybrid search (vector + keyword).
+    /// Combines semantic similarity with exact keyword matching for best results.
     /// </summary>
-    /// <param name="queryVector">The query embedding vector.</param>
+    /// <param name="queryText">The original query text for keyword search.</param>
+    /// <param name="queryVector">The query embedding vector for semantic search.</param>
     /// <param name="documentId">The document ID to filter by.</param>
     /// <param name="topK">Number of results to return.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The most relevant chunks with their relevance scores, sorted by score descending.</returns>
     Task<IReadOnlyList<ChunkSearchResult>> SearchAsync(
+        string queryText,
         float[] queryVector,
         string documentId,
         int topK = 5,

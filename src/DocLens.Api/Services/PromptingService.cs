@@ -47,8 +47,8 @@ public class PromptingService : IPromptingService
         var embeddings = await _embeddingService.GenerateEmbeddingsAsync([question], cancellationToken);
         var queryVector = embeddings[0];
 
-        // Search for relevant chunks
-        var chunks = await _searchService.SearchAsync(queryVector, documentId, DefaultTopK, cancellationToken);
+        // Search for relevant chunks using hybrid search (keyword + vector)
+        var chunks = await _searchService.SearchAsync(question, queryVector, documentId, DefaultTopK, cancellationToken);
 
         return new PromptContext(question, chunks, chatHistory);
     }
