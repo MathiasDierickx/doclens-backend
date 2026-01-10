@@ -43,6 +43,30 @@ public class ChatSessionServiceTests
     }
 
     [Fact]
+    public async Task CreateSession_StoresWithDocumentIdAsPartitionKey()
+    {
+        // Arrange
+        var documentId = "doc-123";
+        TableEntity? capturedEntity = null;
+
+        _mockTableClient
+            .Setup(x => x.UpsertEntityAsync(
+                It.IsAny<ITableEntity>(),
+                TableUpdateMode.Replace,
+                It.IsAny<CancellationToken>()))
+            .Callback<ITableEntity, TableUpdateMode, CancellationToken>((e, _, _) => capturedEntity = e as TableEntity)
+            .ReturnsAsync(Mock.Of<Response>());
+
+        // Act
+        await _sut.CreateSessionAsync(documentId);
+
+        // Assert
+        capturedEntity.Should().NotBeNull();
+        capturedEntity!.PartitionKey.Should().Be(documentId);
+        capturedEntity.RowKey.Should().StartWith("session_");
+    }
+
+    [Fact]
     public async Task GetSession_WithValidId_ReturnsSession()
     {
         // Arrange
@@ -50,21 +74,17 @@ public class ChatSessionServiceTests
         var documentId = "doc-456";
         var createdAt = DateTime.UtcNow.AddMinutes(-10);
 
-        var entity = new TableEntity(sessionId, "session")
+        // Session metadata entity
+        var sessionEntity = new TableEntity(documentId, $"session_{sessionId}")
         {
+            { "SessionId", sessionId },
             { "DocumentId", documentId },
-            { "MessagesJson", "[]" },
             { "CreatedAt", createdAt },
             { "UpdatedAt", createdAt }
         };
 
-        _mockTableClient
-            .Setup(x => x.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Response.FromValue(entity, Mock.Of<Response>()));
+        // Setup query for session metadata
+        SetupQueryAsync(_mockTableClient, new[] { sessionEntity });
 
         // Act
         var session = await _sut.GetSessionAsync(sessionId);
@@ -78,52 +98,46 @@ public class ChatSessionServiceTests
     [Fact]
     public async Task GetSession_WithInvalidId_ReturnsNull()
     {
-        // Arrange
-        var sessionId = "non-existent";
-
-        _mockTableClient
-            .Setup(x => x.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                null,
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new RequestFailedException(404, "Not found"));
+        // Arrange - return empty list for query
+        SetupQueryAsync(_mockTableClient, Array.Empty<TableEntity>());
 
         // Act
-        var session = await _sut.GetSessionAsync(sessionId);
+        var session = await _sut.GetSessionAsync("non-existent");
 
         // Assert
         session.Should().BeNull();
     }
 
     [Fact]
-    public async Task AddMessage_AppendsToHistory()
+    public async Task AddMessage_CreatesNewMessageRow()
     {
         // Arrange
         var sessionId = "session-123";
-        var existingEntity = new TableEntity(sessionId, "session")
+        var documentId = "doc-456";
+
+        // Session metadata for UpdateSessionTimestamp
+        var sessionEntity = new TableEntity(documentId, $"session_{sessionId}")
         {
-            { "DocumentId", "doc-456" },
-            { "MessagesJson", "[]" },
+            { "SessionId", sessionId },
+            { "DocumentId", documentId },
             { "CreatedAt", DateTime.UtcNow },
             { "UpdatedAt", DateTime.UtcNow }
         };
 
-        _mockTableClient
-            .Setup(x => x.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Response.FromValue(existingEntity, Mock.Of<Response>()));
+        SetupQueryAsync(_mockTableClient, new[] { sessionEntity });
 
-        TableEntity? capturedEntity = null;
+        TableEntity? capturedMessageEntity = null;
         _mockTableClient
             .Setup(x => x.UpsertEntityAsync(
-                It.IsAny<TableEntity>(),
-                TableUpdateMode.Replace,
+                It.IsAny<ITableEntity>(),
+                It.IsAny<TableUpdateMode>(),
                 It.IsAny<CancellationToken>()))
-            .Callback<ITableEntity, TableUpdateMode, CancellationToken>((e, _, _) => capturedEntity = e as TableEntity)
+            .Callback<ITableEntity, TableUpdateMode, CancellationToken>((e, _, _) =>
+            {
+                var entity = e as TableEntity;
+                if (entity?.RowKey?.StartsWith("msg_") == true)
+                    capturedMessageEntity = entity;
+            })
             .ReturnsAsync(Mock.Of<Response>());
 
         var message = new ChatMessage("user", "Hello!", DateTime.UtcNow);
@@ -132,9 +146,11 @@ public class ChatSessionServiceTests
         await _sut.AddMessageAsync(sessionId, message);
 
         // Assert
-        capturedEntity.Should().NotBeNull();
-        var messagesJson = capturedEntity!.GetString("MessagesJson");
-        messagesJson.Should().Contain("Hello!");
+        capturedMessageEntity.Should().NotBeNull();
+        capturedMessageEntity!.PartitionKey.Should().Be(sessionId);
+        capturedMessageEntity.RowKey.Should().StartWith("msg_");
+        capturedMessageEntity.GetString("Content").Should().Be("Hello!");
+        capturedMessageEntity.GetString("Role").Should().Be("user");
     }
 
     [Fact]
@@ -142,29 +158,16 @@ public class ChatSessionServiceTests
     {
         // Arrange
         var sessionId = "session-123";
-        var messages = new[]
-        {
-            new ChatMessage("user", "First", DateTime.UtcNow.AddMinutes(-2)),
-            new ChatMessage("assistant", "Second", DateTime.UtcNow.AddMinutes(-1)),
-            new ChatMessage("user", "Third", DateTime.UtcNow)
-        };
-        var messagesJson = System.Text.Json.JsonSerializer.Serialize(messages);
+        var now = DateTime.UtcNow;
 
-        var entity = new TableEntity(sessionId, "session")
+        var messageEntities = new[]
         {
-            { "DocumentId", "doc-456" },
-            { "MessagesJson", messagesJson },
-            { "CreatedAt", DateTime.UtcNow },
-            { "UpdatedAt", DateTime.UtcNow }
+            CreateMessageEntity(sessionId, "user", "First", now.AddMinutes(-2)),
+            CreateMessageEntity(sessionId, "assistant", "Second", now.AddMinutes(-1)),
+            CreateMessageEntity(sessionId, "user", "Third", now)
         };
 
-        _mockTableClient
-            .Setup(x => x.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Response.FromValue(entity, Mock.Of<Response>()));
+        SetupQueryAsync(_mockTableClient, messageEntities);
 
         // Act
         var history = await _sut.GetHistoryAsync(sessionId);
@@ -181,26 +184,13 @@ public class ChatSessionServiceTests
     {
         // Arrange
         var sessionId = "session-123";
-        var messages = Enumerable.Range(1, 20)
-            .Select(i => new ChatMessage("user", $"Message {i}", DateTime.UtcNow.AddMinutes(-20 + i)))
+        var now = DateTime.UtcNow;
+
+        var messageEntities = Enumerable.Range(1, 20)
+            .Select(i => CreateMessageEntity(sessionId, "user", $"Message {i}", now.AddMinutes(-20 + i)))
             .ToArray();
-        var messagesJson = System.Text.Json.JsonSerializer.Serialize(messages);
 
-        var entity = new TableEntity(sessionId, "session")
-        {
-            { "DocumentId", "doc-456" },
-            { "MessagesJson", messagesJson },
-            { "CreatedAt", DateTime.UtcNow },
-            { "UpdatedAt", DateTime.UtcNow }
-        };
-
-        _mockTableClient
-            .Setup(x => x.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                null,
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Response.FromValue(entity, Mock.Of<Response>()));
+        SetupQueryAsync(_mockTableClient, messageEntities);
 
         // Act
         var history = await _sut.GetHistoryAsync(sessionId, maxMessages: 5);
@@ -214,21 +204,88 @@ public class ChatSessionServiceTests
     [Fact]
     public async Task GetHistory_WithNonExistentSession_ReturnsEmptyList()
     {
-        // Arrange
-        var sessionId = "non-existent";
-
-        _mockTableClient
-            .Setup(x => x.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                null,
-                It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new RequestFailedException(404, "Not found"));
+        // Arrange - empty query result
+        SetupQueryAsync(_mockTableClient, Array.Empty<TableEntity>());
 
         // Act
-        var history = await _sut.GetHistoryAsync(sessionId);
+        var history = await _sut.GetHistoryAsync("non-existent");
 
         // Assert
         history.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetSessionsByDocument_ReturnsSessionsForDocument()
+    {
+        // Arrange
+        var documentId = "doc-123";
+        var now = DateTime.UtcNow;
+
+        var sessionEntities = new[]
+        {
+            new TableEntity(documentId, "session_sess-1")
+            {
+                { "SessionId", "sess-1" },
+                { "DocumentId", documentId },
+                { "CreatedAt", now.AddHours(-2) },
+                { "UpdatedAt", now.AddHours(-1) }
+            },
+            new TableEntity(documentId, "session_sess-2")
+            {
+                { "SessionId", "sess-2" },
+                { "DocumentId", documentId },
+                { "CreatedAt", now.AddHours(-1) },
+                { "UpdatedAt", now }
+            }
+        };
+
+        SetupQueryAsync(_mockTableClient, sessionEntities);
+
+        // Act
+        var sessions = await _sut.GetSessionsByDocumentAsync(documentId);
+
+        // Assert
+        sessions.Should().HaveCount(2);
+        sessions[0].SessionId.Should().Be("sess-2"); // Most recently updated first
+        sessions[1].SessionId.Should().Be("sess-1");
+    }
+
+    private static TableEntity CreateMessageEntity(string sessionId, string role, string content, DateTime timestamp)
+    {
+        return new TableEntity(sessionId, $"msg_{timestamp:o}_{Guid.NewGuid().ToString()[..8]}")
+        {
+            { "Role", role },
+            { "Content", content },
+            { "Timestamp", timestamp },
+            { "SourcesJson", null }
+        };
+    }
+
+    private static void SetupQueryAsync(Mock<TableClient> mock, TableEntity[] entities)
+    {
+        var asyncPageable = new MockAsyncPageable<TableEntity>(entities);
+        mock
+            .Setup(x => x.QueryAsync<TableEntity>(
+                It.IsAny<string>(),
+                It.IsAny<int?>(),
+                It.IsAny<IEnumerable<string>>(),
+                It.IsAny<CancellationToken>()))
+            .Returns(asyncPageable);
+    }
+
+    private class MockAsyncPageable<T> : AsyncPageable<T>
+    {
+        private readonly T[] _items;
+
+        public MockAsyncPageable(T[] items)
+        {
+            _items = items;
+        }
+
+        public override async IAsyncEnumerable<Page<T>> AsPages(string? continuationToken = null, int? pageSizeHint = null)
+        {
+            yield return Page<T>.FromValues(_items, null, Mock.Of<Response>());
+            await Task.CompletedTask;
+        }
     }
 }

@@ -5,6 +5,18 @@ using DocLens.Api.Models;
 
 namespace DocLens.Api.Services;
 
+/// <summary>
+/// Chat session service using Azure Table Storage.
+///
+/// Storage design:
+/// - Session metadata: PartitionKey = documentId, RowKey = "session_{sessionId}"
+/// - Messages: PartitionKey = sessionId, RowKey = "msg_{timestamp}_{index}"
+///
+/// This design allows:
+/// - Efficient querying of all sessions for a document
+/// - Efficient querying of all messages in a session
+/// - No size limits (each message is a separate row)
+/// </summary>
 public class ChatSessionService : IChatSessionService
 {
     private readonly TableClient _tableClient;
@@ -21,19 +33,24 @@ public class ChatSessionService : IChatSessionService
 
     public async Task<ChatSession?> GetSessionAsync(string sessionId, CancellationToken cancellationToken = default)
     {
-        try
+        // First, find the session metadata by querying for it
+        await foreach (var entity in _tableClient.QueryAsync<TableEntity>(
+            filter: $"RowKey eq 'session_{sessionId}'",
+            cancellationToken: cancellationToken))
         {
-            var response = await _tableClient.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                cancellationToken: cancellationToken);
+            var documentId = entity.GetString("DocumentId") ?? "";
+            var messages = await GetMessagesAsync(sessionId, cancellationToken);
 
-            return EntityToSession(response.Value);
+            return new ChatSession(
+                sessionId,
+                documentId,
+                messages,
+                entity.GetDateTime("CreatedAt") ?? DateTime.UtcNow,
+                entity.GetDateTime("UpdatedAt") ?? DateTime.UtcNow
+            );
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return null;
-        }
+
+        return null;
     }
 
     public async Task<ChatSession> CreateSessionAsync(string documentId, CancellationToken cancellationToken = default)
@@ -41,10 +58,11 @@ public class ChatSessionService : IChatSessionService
         var sessionId = Guid.NewGuid().ToString();
         var now = DateTime.UtcNow;
 
-        var entity = new TableEntity(sessionId, "session")
+        // Store session metadata with documentId as partition key for efficient document queries
+        var entity = new TableEntity(documentId, $"session_{sessionId}")
         {
+            { "SessionId", sessionId },
             { "DocumentId", documentId },
-            { "MessagesJson", "[]" },
             { "CreatedAt", now },
             { "UpdatedAt", now }
         };
@@ -56,28 +74,27 @@ public class ChatSessionService : IChatSessionService
 
     public async Task AddMessageAsync(string sessionId, ChatMessage message, CancellationToken cancellationToken = default)
     {
-        var response = await _tableClient.GetEntityAsync<TableEntity>(
-            sessionId,
-            "session",
-            cancellationToken: cancellationToken);
+        // Create a unique, sortable row key using timestamp and a random suffix
+        var timestamp = message.Timestamp.ToString("o"); // ISO 8601 format for proper sorting
+        var rowKey = $"msg_{timestamp}_{Guid.NewGuid().ToString()[..8]}";
 
-        var entity = response.Value;
-        var messagesJson = entity.GetString("MessagesJson") ?? "[]";
-        var messages = JsonSerializer.Deserialize<List<ChatMessage>>(messagesJson, JsonOptions) ?? [];
-
-        // Store message without full source content to avoid exceeding Azure Table's 64KB limit
-        // Keep only page numbers and scores for reference, not full text/positions
+        // Compact sources to save space (keep page + score, not full text)
         var compactSources = message.Sources?
             .Select(s => new SourceReference(s.Page, Text: "", Positions: null, s.RelevanceScore))
             .ToList();
-        var compactMessage = message with { Sources = compactSources };
 
-        messages.Add(compactMessage);
-
-        entity["MessagesJson"] = JsonSerializer.Serialize(messages, JsonOptions);
-        entity["UpdatedAt"] = DateTime.UtcNow;
+        var entity = new TableEntity(sessionId, rowKey)
+        {
+            { "Role", message.Role },
+            { "Content", message.Content },
+            { "Timestamp", message.Timestamp },
+            { "SourcesJson", compactSources != null ? JsonSerializer.Serialize(compactSources, JsonOptions) : null }
+        };
 
         await _tableClient.UpsertEntityAsync(entity, TableUpdateMode.Replace, cancellationToken);
+
+        // Update session metadata's UpdatedAt
+        await UpdateSessionTimestampAsync(sessionId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<ChatMessage>> GetHistoryAsync(
@@ -85,28 +102,15 @@ public class ChatSessionService : IChatSessionService
         int maxMessages = 10,
         CancellationToken cancellationToken = default)
     {
-        try
+        var messages = await GetMessagesAsync(sessionId, cancellationToken);
+
+        // Return the most recent messages, maintaining chronological order
+        if (messages.Count > maxMessages)
         {
-            var response = await _tableClient.GetEntityAsync<TableEntity>(
-                sessionId,
-                "session",
-                cancellationToken: cancellationToken);
-
-            var messagesJson = response.Value.GetString("MessagesJson") ?? "[]";
-            var messages = JsonSerializer.Deserialize<List<ChatMessage>>(messagesJson, JsonOptions) ?? [];
-
-            // Return the most recent messages, maintaining chronological order
-            if (messages.Count > maxMessages)
-            {
-                return messages.Skip(messages.Count - maxMessages).ToList();
-            }
-
-            return messages;
+            return messages.Skip(messages.Count - maxMessages).ToList();
         }
-        catch (RequestFailedException ex) when (ex.Status == 404)
-        {
-            return [];
-        }
+
+        return messages;
     }
 
     public async Task<IReadOnlyList<ChatSession>> GetSessionsByDocumentAsync(
@@ -115,33 +119,64 @@ public class ChatSessionService : IChatSessionService
     {
         var sessions = new List<ChatSession>();
 
-        // Query all sessions and filter by document ID
-        // Note: In a production system with many sessions, you might want to use a secondary index
+        // Query sessions by document ID (partition key) with row key prefix
         await foreach (var entity in _tableClient.QueryAsync<TableEntity>(
-            filter: $"RowKey eq 'session'",
+            filter: $"PartitionKey eq '{documentId}' and RowKey ge 'session_' and RowKey lt 'session`'",
             cancellationToken: cancellationToken))
         {
-            if (entity.GetString("DocumentId") == documentId)
-            {
-                sessions.Add(EntityToSession(entity));
-            }
+            var sessionId = entity.GetString("SessionId") ?? "";
+
+            // For listing, we don't load all messages - just metadata
+            sessions.Add(new ChatSession(
+                sessionId,
+                documentId,
+                [], // Don't load messages for listing
+                entity.GetDateTime("CreatedAt") ?? DateTime.UtcNow,
+                entity.GetDateTime("UpdatedAt") ?? DateTime.UtcNow
+            ));
         }
 
         // Return sessions sorted by UpdatedAt descending (most recent first)
         return sessions.OrderByDescending(s => s.UpdatedAt).ToList();
     }
 
-    private static ChatSession EntityToSession(TableEntity entity)
+    private async Task<List<ChatMessage>> GetMessagesAsync(string sessionId, CancellationToken cancellationToken)
     {
-        var messagesJson = entity.GetString("MessagesJson") ?? "[]";
-        var messages = JsonSerializer.Deserialize<List<ChatMessage>>(messagesJson, JsonOptions) ?? [];
+        var messages = new List<ChatMessage>();
 
-        return new ChatSession(
-            entity.PartitionKey,
-            entity.GetString("DocumentId") ?? "",
-            messages,
-            entity.GetDateTime("CreatedAt") ?? DateTime.UtcNow,
-            entity.GetDateTime("UpdatedAt") ?? DateTime.UtcNow
-        );
+        // Query all messages for this session (partition key = sessionId, row key starts with "msg_")
+        await foreach (var entity in _tableClient.QueryAsync<TableEntity>(
+            filter: $"PartitionKey eq '{sessionId}' and RowKey ge 'msg_' and RowKey lt 'msg`'",
+            cancellationToken: cancellationToken))
+        {
+            var sourcesJson = entity.GetString("SourcesJson");
+            var sources = !string.IsNullOrEmpty(sourcesJson)
+                ? JsonSerializer.Deserialize<List<SourceReference>>(sourcesJson, JsonOptions)
+                : null;
+
+            messages.Add(new ChatMessage(
+                entity.GetString("Role") ?? "user",
+                entity.GetString("Content") ?? "",
+                entity.GetDateTime("Timestamp") ?? DateTime.UtcNow,
+                sources
+            ));
+        }
+
+        // Sort by timestamp (row keys are already sorted, but let's be explicit)
+        return messages.OrderBy(m => m.Timestamp).ToList();
+    }
+
+    private async Task UpdateSessionTimestampAsync(string sessionId, CancellationToken cancellationToken)
+    {
+        // Find the session metadata and update its timestamp
+        await foreach (var entity in _tableClient.QueryAsync<TableEntity>(
+            filter: $"RowKey eq 'session_{sessionId}'",
+            maxPerPage: 1,
+            cancellationToken: cancellationToken))
+        {
+            entity["UpdatedAt"] = DateTime.UtcNow;
+            await _tableClient.UpsertEntityAsync(entity, TableUpdateMode.Merge, cancellationToken);
+            break;
+        }
     }
 }
