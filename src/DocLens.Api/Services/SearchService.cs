@@ -28,7 +28,7 @@ public class SearchService : ISearchService
             [
                 new SimpleField("id", SearchFieldDataType.String) { IsKey = true },
                 new SimpleField("documentId", SearchFieldDataType.String) { IsFilterable = true },
-                new SimpleField("chunkIndex", SearchFieldDataType.Int32),
+                new SimpleField("chunkIndex", SearchFieldDataType.Int32) { IsFilterable = true },
                 new SimpleField("pageNumber", SearchFieldDataType.Int32) { IsFilterable = true },
                 new SearchableField("content") { AnalyzerName = LexicalAnalyzerName.EnLucene },
                 new VectorSearchField("contentVector", 1536, "default-vector-profile"),
