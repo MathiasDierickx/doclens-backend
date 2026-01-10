@@ -1,6 +1,6 @@
 # DocLens Backend
 
-Document Q&A API powered by Azure Functions and Azure AI Services.
+Document Q&A API powered by Azure Functions and Azure AI Services. Upload PDFs, automatically index them with vector embeddings, and ask questions with AI-powered answers that cite specific pages.
 
 ## Architecture
 
@@ -8,12 +8,146 @@ Document Q&A API powered by Azure Functions and Azure AI Services.
 - **Hosting**: Azure Functions Consumption Plan (serverless)
 - **Infrastructure**: Bicep + Azure Developer CLI (azd)
 
+### Azure Services Used
+
+| Service | Purpose |
+|---------|---------|
+| Azure Functions | Serverless API hosting |
+| Azure Blob Storage | PDF document storage |
+| Azure Table Storage | Indexing status & chat sessions |
+| Azure Document Intelligence | PDF text extraction with layout |
+| Azure OpenAI | Embeddings (text-embedding-3-small) & Chat (GPT-4o) |
+| Azure AI Search | Vector + keyword hybrid search |
+| Application Insights | Monitoring & logging |
+
+## API Endpoints
+
+### Documents
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/documents/upload-url?filename=doc.pdf` | POST | Get SAS URL for direct PDF upload |
+| `/api/documents` | GET | List all uploaded documents |
+| `/api/documents/{documentId}` | GET | Get document details |
+| `/api/documents/{documentId}` | DELETE | Delete a document |
+| `/api/documents/{documentId}/download-url` | GET | Get SAS URL for PDF download |
+| `/api/documents/{documentId}/status` | GET | **SSE** - Stream indexing progress |
+| `/api/documents/{documentId}/ask` | POST | **SSE** - Ask question, stream answer |
+
+### Chat Sessions
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/documents/{documentId}/chat-sessions` | GET | List chat sessions for a document |
+| `/api/chat-sessions/{sessionId}` | GET | Get chat history for a session |
+
+### System
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check |
+| `/api/hello?name=Name` | GET | Hello world test |
+
+### SSE Streaming Endpoints
+
+**Indexing Status** (`GET /api/documents/{documentId}/status`)
+```
+event: status
+data: {"status":"extracting","progress":10,"message":"Extracting text from PDF..."}
+
+event: status
+data: {"status":"embedding","progress":50,"message":"Generating embeddings..."}
+
+event: complete
+data: {"status":"ready","progress":100,"message":"Indexing complete"}
+```
+
+**Ask Question** (`POST /api/documents/{documentId}/ask`)
+```json
+// Request body
+{ "question": "What is the main topic?", "sessionId": "optional-session-id" }
+```
+```
+event: chunk
+data: {"content":"The"}
+
+event: chunk
+data: {"content":" main topic"}
+
+event: sources
+data: {"sources":[{"page":1,"text":"...","positions":[...]}]}
+
+event: done
+data: {"sessionId":"abc-123"}
+```
+
+## Project Structure
+
+```
+doclens-backend/
+├── azure.yaml                    # azd configuration
+├── infra/                        # Bicep infrastructure
+│   ├── main.bicep
+│   ├── main.parameters.json
+│   └── modules/
+│       ├── function-app.bicep
+│       └── ai-services.bicep
+├── src/DocLens.Api/
+│   ├── Functions/
+│   │   ├── HealthFunction.cs     # Health check
+│   │   ├── HelloFunction.cs      # Hello world
+│   │   ├── DocumentsFunction.cs  # CRUD operations
+│   │   ├── IndexingFunction.cs   # Blob-triggered indexing pipeline
+│   │   ├── StatusFunction.cs     # SSE indexing progress
+│   │   ├── AskFunction.cs        # SSE Q&A streaming
+│   │   └── ChatFunction.cs       # Chat session management
+│   ├── Services/
+│   │   ├── IDocumentIntelligenceService.cs  # PDF text extraction
+│   │   ├── IChunkingService.cs              # Text chunking
+│   │   ├── IEmbeddingService.cs             # Vector embeddings
+│   │   ├── ISearchService.cs                # Azure AI Search
+│   │   ├── IIndexingStatusService.cs        # Progress tracking
+│   │   ├── IPromptingService.cs             # RAG prompt building
+│   │   └── IChatSessionService.cs           # Chat history
+│   ├── Models/
+│   │   ├── DocumentModels.cs
+│   │   ├── ChunkModels.cs
+│   │   ├── IndexingModels.cs
+│   │   ├── AskModels.cs
+│   │   └── ChatModels.cs
+│   └── Program.cs                # DI configuration
+└── tests/DocLens.Api.Tests/
+    └── Services/
+        ├── ChunkingServiceTests.cs
+        ├── PromptingServiceTests.cs
+        └── ChatSessionServiceTests.cs
+```
+
+## Indexing Pipeline
+
+When a PDF is uploaded to blob storage, the `IndexingFunction` is automatically triggered:
+
+```
+1. Extract (10%)  → Azure Document Intelligence extracts text + layout
+2. Chunk (30%)    → Split into overlapping chunks with position data
+3. Embed (50%)    → Generate embeddings via Azure OpenAI
+4. Index (80%)    → Store in Azure AI Search with vectors
+5. Ready (100%)   → Document ready for Q&A
+```
+
+### Rate Limit Handling
+
+The embedding service includes built-in resilience:
+- **Batching**: Processes max 16 texts per batch
+- **Retry**: Up to 5 attempts with exponential backoff
+- **Backoff**: Starts at 60s (Azure OpenAI requirement), doubles each retry
+
 ## Prerequisites
 
 - [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
 - [Azure Functions Core Tools v4](https://docs.microsoft.com/azure/azure-functions/functions-run-local)
 - [Azure Developer CLI (azd)](https://learn.microsoft.com/azure/developer/azure-developer-cli/install-azd)
-- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli) (for authentication)
+- [Azure CLI](https://docs.microsoft.com/cli/azure/install-azure-cli)
 
 ## Local Development
 
@@ -35,7 +169,16 @@ Create `src/DocLens.Api/local.settings.json`:
     "AzureWebJobsStorage": "UseDevelopmentStorage=true",
     "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
     "StorageConnection": "<your-storage-connection-string>",
-    "DocumentsContainer": "documents"
+    "DocumentsContainer": "documents",
+    "DocumentIntelligenceEndpoint": "<endpoint>",
+    "DocumentIntelligenceKey": "<key>",
+    "AzureOpenAIEndpoint": "<endpoint>",
+    "AzureOpenAIKey": "<key>",
+    "AzureOpenAIEmbeddingDeployment": "text-embedding-3-small",
+    "AzureOpenAIChatDeployment": "gpt-4o",
+    "AzureSearchEndpoint": "<endpoint>",
+    "AzureSearchKey": "<key>",
+    "AzureSearchIndexName": "documents"
   },
   "Host": {
     "CORS": "http://localhost:3000",
@@ -44,40 +187,7 @@ Create `src/DocLens.Api/local.settings.json`:
 }
 ```
 
-### 3. Configure Storage Connection
-
-For the document upload/list functionality, you need Azure Blob Storage. You have two options:
-
-**Option A: Use Azure Storage (recommended for full testing)**
-
-Get your storage connection string after deploying to Azure:
-
-```bash
-# Get storage account name
-az storage account list --resource-group rg-doclens-dev --query "[0].name" -o tsv
-
-# Get connection string
-az storage account show-connection-string --name <storage-account-name> --resource-group rg-doclens-dev --query connectionString -o tsv
-```
-
-Set the `StorageConnection` value in `local.settings.json` to this connection string.
-
-**Option B: Use Azurite (local storage emulator)**
-
-```bash
-# Install Azurite globally
-npm install -g azurite
-
-# Start Azurite (in a separate terminal)
-azurite --silent --location ./azurite-data
-
-# Create the documents container
-az storage container create --name documents --connection-string "UseDevelopmentStorage=true"
-```
-
-Then set `StorageConnection` to `"UseDevelopmentStorage=true"`.
-
-### 4. Run locally
+### 3. Run locally
 
 ```bash
 cd src/DocLens.Api
@@ -86,126 +196,44 @@ func start
 
 The API will be available at `http://localhost:7071`.
 
-> **Note:** The `local.settings.json` file is in `.gitignore` and should not be committed as it may contain secrets.
+### 4. Run tests
 
-### Available Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check |
-| `/api/hello?name=Your Name` | GET | Hello world test |
-| `/api/documents/upload-url?filename=doc.pdf` | POST | Get SAS URL for direct upload |
-| `/api/documents` | GET | List all uploaded documents |
-| `/api/documents/{documentId}` | DELETE | Delete a document |
+```bash
+dotnet test
+```
 
 ## Deployment to Azure
 
-### 1. Create Azure Account
-
-If you don't have an Azure account, create one at [azure.microsoft.com/free](https://azure.microsoft.com/free).
-You get €170 free credit for the first 30 days.
-
-### 2. Install CLIs
+### 1. Login to Azure
 
 ```bash
-# Azure CLI
-brew install azure-cli
-
-# Azure Developer CLI (azd)
-brew tap azure/azd && brew install azd
-```
-
-### 3. Login to Azure
-
-```bash
-# Login to Azure CLI (needed for resource provider registration)
 az login
-
-# Login to Azure Developer CLI
 azd auth login
 ```
 
-### 4. Register Required Resource Providers
-
-For a new Azure subscription, you may need to register resource providers:
+### 2. Initialize and Deploy
 
 ```bash
-az provider register --namespace microsoft.operationalinsights
-az provider register --namespace Microsoft.Web
-az provider register --namespace Microsoft.Storage
-```
-
-Check registration status:
-
-```bash
-az provider show --namespace microsoft.operationalinsights --query "registrationState" -o tsv
-```
-
-### 5. Initialize and Deploy
-
-```bash
-# Initialize environment (first time only - choose environment name like 'dev')
+# Initialize environment (first time only)
 azd init
 
-# Set your preferred Azure region (optional, will be prompted if not set)
-azd env set AZURE_LOCATION belgiumcentral
+# Set your preferred Azure region
+azd env set AZURE_LOCATION swedencentral
 
-# Provision infrastructure and deploy code
+# Provision infrastructure and deploy
 azd up
 ```
 
-This creates:
-- Resource group: `rg-doclens-{env}`
-- Azure Functions (Consumption plan - serverless)
-- Application Insights (monitoring)
-- Storage Account
-
-### 6. View Deployed Resources
+### 3. View Deployed Resources
 
 ```bash
-# Show deployment info
 azd show
-
-# Get the Function App URL
 azd env get-values | grep AZURE_FUNCTION_APP_URL
-```
-
-### 7. Test the Deployment
-
-```bash
-# Health check
-curl https://<your-function-app>.azurewebsites.net/api/health
-
-# Hello endpoint
-curl "https://<your-function-app>.azurewebsites.net/api/hello?name=World"
-```
-
-## Project Structure
-
-```
-doclens-backend/
-├── azure.yaml              # azd configuration
-├── infra/                  # Bicep infrastructure
-│   ├── main.bicep
-│   ├── main.parameters.json
-│   └── modules/
-│       └── function-app.bicep
-└── src/
-    └── DocLens.Api/        # Azure Functions project
-        ├── Functions/
-        │   ├── HealthFunction.cs
-        │   ├── HelloFunction.cs
-        │   └── DocumentsFunction.cs
-        ├── Models/
-        │   └── DocumentModels.cs
-        └── Program.cs
 ```
 
 ## OpenAPI / Swagger
 
-The API includes OpenAPI 3.0 documentation with Swagger UI.
-
-### Endpoints (when running)
+The API includes OpenAPI 3.0 documentation.
 
 | URL | Description |
 |-----|-------------|
@@ -215,56 +243,37 @@ The API includes OpenAPI 3.0 documentation with Swagger UI.
 
 ### Extract OpenAPI Spec & Generate Frontend Types
 
-The backend generates an OpenAPI 3.0 specification that is used to auto-generate fully type-safe API hooks for the frontend (RTK Query). This provides end-to-end type safety from backend to frontend.
-
-**One command to update everything:**
-
 ```bash
+# One command to extract spec and generate frontend types
 ./scripts/extract-openapi-docker.sh
-```
 
-This script:
-1. Builds a Docker container with the .NET SDK and Azure Functions Core Tools
-2. Starts the Functions app inside the container
-3. Extracts the OpenAPI spec to `openapi.json`
-4. If `../doclens-app` exists, copies the spec and runs `npm run codegen` to regenerate the frontend API hooks
-
-**Alternative options:**
-
-```bash
-# Option 1: Shell script (requires func running or starts it)
-./scripts/extract-openapi.sh openapi.json
-
-# Option 2: Manual (when func is running)
+# Or manually when func is running
 curl http://localhost:7071/api/openapi/v3.json > openapi.json
 ```
 
-### Frontend Type-Safe API Generation
+The frontend (`doclens-app`) uses RTK Query with automatic code generation from the OpenAPI spec for fully typed API hooks.
 
-The frontend (`doclens-app`) uses [RTK Query](https://redux-toolkit.js.org/rtk-query/overview) with automatic code generation from the OpenAPI spec. When you add or modify API endpoints:
+## Development Principles
 
-1. Update the backend endpoint with OpenAPI attributes
-2. Run `./scripts/extract-openapi-docker.sh`
-3. The frontend gets fully typed hooks like `useGetHealthQuery()`, `useListDocumentsQuery()`, etc.
+This project follows:
 
-Example usage in frontend:
-```typescript
-import { useGetHealthQuery, useListDocumentsQuery } from "@/store/api/generatedApi";
-
-function MyComponent() {
-  const { data: health, isLoading } = useGetHealthQuery();
-  const { data: documents } = useListDocumentsQuery();
-
-  // data is fully typed based on the OpenAPI spec!
-  return <div>{health?.status}</div>;
-}
-```
+- **TDD** - Tests written before implementation
+- **SOLID** - Single responsibility, interface segregation, dependency injection
+- **Clean Architecture** - Thin functions, business logic in services
 
 ## Next Steps
 
-- [ ] Add CosmosDB for document metadata
-- [x] Add Azure Blob Storage for PDF storage
-- [ ] Integrate Azure Document Intelligence for PDF parsing
-- [ ] Integrate Azure OpenAI for Q&A
-- [x] Add OpenAPI/Swagger documentation
-- [x] Add frontend type-safe API generation (RTK Query codegen)
+- [x] Azure Blob Storage for PDF storage
+- [x] Azure Document Intelligence for PDF parsing
+- [x] Azure OpenAI embeddings + chat
+- [x] Azure AI Search for vector search
+- [x] SSE streaming for indexing progress
+- [x] SSE streaming for Q&A responses
+- [x] Chat history with session management
+- [x] Rate limit handling with exponential backoff
+- [x] OpenAPI/Swagger documentation
+- [x] Frontend type-safe API generation (RTK Query codegen)
+- [ ] Authentication (Azure AD B2C or similar)
+- [ ] Multi-document search (search across all user documents)
+- [ ] Document sharing between users
+- [ ] Usage quotas and billing
