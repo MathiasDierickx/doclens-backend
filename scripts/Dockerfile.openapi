@@ -29,6 +29,24 @@ RUN dotnet build src/DocLens.Api/DocLens.Api.csproj -c Release
 # Install Azurite for local storage emulation
 RUN npm install -g azurite
 
+# Create local.settings.json with Azurite connection strings (overwrite any existing)
+RUN echo '{\n\
+  "IsEncrypted": false,\n\
+  "Values": {\n\
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",\n\
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",\n\
+    "BlobStorage__ConnectionString": "UseDevelopmentStorage=true",\n\
+    "TableStorage__ConnectionString": "UseDevelopmentStorage=true",\n\
+    "AzureAISearch__Endpoint": "https://dummy.search.windows.net",\n\
+    "AzureAISearch__ApiKey": "dummy",\n\
+    "AzureOpenAI__Endpoint": "https://dummy.openai.azure.com",\n\
+    "AzureOpenAI__ApiKey": "dummy",\n\
+    "AzureOpenAI__DeploymentName": "gpt-4o",\n\
+    "DocumentIntelligence__Endpoint": "https://dummy.cognitiveservices.azure.com",\n\
+    "DocumentIntelligence__ApiKey": "dummy"\n\
+  }\n\
+}' > /app/src/DocLens.Api/local.settings.json
+
 # Create extraction script
 RUN printf '#!/bin/bash\n\
 set -e\n\
