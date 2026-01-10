@@ -22,11 +22,11 @@ public record ChatSession(
 );
 
 /// <summary>
-/// Context for generating a prompt response, including relevant document chunks and optional chat history.
+/// Context for generating a prompt response, including relevant document chunks with scores and optional chat history.
 /// </summary>
 public record PromptContext(
     string Question,
-    IReadOnlyList<DocumentChunk> RelevantChunks,
+    IReadOnlyList<ChunkSearchResult> RelevantChunks,
     IReadOnlyList<ChatMessage>? ChatHistory = null
 );
 

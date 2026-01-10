@@ -69,3 +69,13 @@ public record DocumentChunk(
         return JsonSerializer.Deserialize<List<TextPosition>>(PositionsJson);
     }
 }
+
+/// <summary>
+/// A search result containing a document chunk and its relevance score.
+/// </summary>
+/// <param name="Chunk">The matched document chunk.</param>
+/// <param name="Score">Relevance score from Azure AI Search (0.0 to 1.0, higher = more relevant).</param>
+public record ChunkSearchResult(
+    DocumentChunk Chunk,
+    double Score
+);

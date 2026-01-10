@@ -82,7 +82,7 @@ public class SearchService : ISearchService
             cancellationToken: cancellationToken);
     }
 
-    public async Task<IReadOnlyList<DocumentChunk>> SearchAsync(
+    public async Task<IReadOnlyList<ChunkSearchResult>> SearchAsync(
         float[] queryVector,
         string documentId,
         int topK = 5,
@@ -106,12 +106,12 @@ public class SearchService : ISearchService
         };
 
         var response = await _searchClient.SearchAsync<SearchDocument>(null, searchOptions, cancellationToken);
-        var results = new List<DocumentChunk>();
+        var results = new List<ChunkSearchResult>();
 
         await foreach (var result in response.Value.GetResultsAsync())
         {
             var doc = result.Document;
-            results.Add(new DocumentChunk(
+            var chunk = new DocumentChunk(
                 doc["id"].ToString()!,
                 doc["documentId"].ToString()!,
                 Convert.ToInt32(doc["chunkIndex"]),
@@ -119,7 +119,10 @@ public class SearchService : ISearchService
                 doc["content"].ToString()!,
                 [],  // Don't return vector in search results
                 doc.TryGetValue("positionsJson", out var posJson) ? posJson?.ToString() : null
-            ));
+            );
+            // Azure AI Search returns scores between 0 and 1 for vector search
+            var score = result.Score ?? 0.0;
+            results.Add(new ChunkSearchResult(chunk, score));
         }
 
         return results;

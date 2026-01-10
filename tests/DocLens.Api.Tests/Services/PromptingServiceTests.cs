@@ -33,9 +33,9 @@ public class PromptingServiceTests
         var documentId = "doc-123";
         var question = "What is the main topic?";
         var embedding = new float[1536];
-        var chunks = new List<DocumentChunk>
+        var searchResults = new List<ChunkSearchResult>
         {
-            new("chunk-1", documentId, 0, 1, "Content about the main topic", embedding)
+            new(new DocumentChunk("chunk-1", documentId, 0, 1, "Content about the main topic", embedding), 0.95)
         };
 
         _mockEmbeddingService
@@ -50,7 +50,7 @@ public class PromptingServiceTests
                 documentId,
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chunks);
+            .ReturnsAsync(searchResults);
 
         // Act
         var context = await _sut.BuildContextAsync(documentId, question);
@@ -87,7 +87,7 @@ public class PromptingServiceTests
                 documentId,
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<DocumentChunk>());
+            .ReturnsAsync(new List<ChunkSearchResult>());
 
         // Act
         var context = await _sut.BuildContextAsync(documentId, question, history);
@@ -120,7 +120,7 @@ public class PromptingServiceTests
                 documentId,
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new List<DocumentChunk>());
+            .ReturnsAsync(new List<ChunkSearchResult>());
 
         // Act
         await _sut.BuildContextAsync(documentId, question);
@@ -134,13 +134,13 @@ public class PromptingServiceTests
     {
         // Arrange
         var embedding = new float[1536];
-        var chunks = new List<DocumentChunk>
+        var searchResults = new List<ChunkSearchResult>
         {
-            new("chunk-1", "doc-1", 0, 1, "Content from page 1, chunk 1", embedding),
-            new("chunk-2", "doc-1", 1, 1, "Content from page 1, chunk 2", embedding),
-            new("chunk-3", "doc-1", 2, 2, "Content from page 2", embedding)
+            new(new DocumentChunk("chunk-1", "doc-1", 0, 1, "Content from page 1, chunk 1", embedding), 0.95),
+            new(new DocumentChunk("chunk-2", "doc-1", 1, 1, "Content from page 1, chunk 2", embedding), 0.85),
+            new(new DocumentChunk("chunk-3", "doc-1", 2, 2, "Content from page 2", embedding), 0.75)
         };
-        var context = new PromptContext("Question?", chunks);
+        var context = new PromptContext("Question?", searchResults);
 
         // Act
         var sources = _sut.GetSourceReferences(context);
@@ -157,11 +157,11 @@ public class PromptingServiceTests
         // Arrange
         var embedding = new float[1536];
         var longContent = new string('a', 500);
-        var chunks = new List<DocumentChunk>
+        var searchResults = new List<ChunkSearchResult>
         {
-            new("chunk-1", "doc-1", 0, 1, longContent, embedding)
+            new(new DocumentChunk("chunk-1", "doc-1", 0, 1, longContent, embedding), 0.90)
         };
-        var context = new PromptContext("Question?", chunks);
+        var context = new PromptContext("Question?", searchResults);
 
         // Act
         var sources = _sut.GetSourceReferences(context);
@@ -175,7 +175,7 @@ public class PromptingServiceTests
     public void GetSourceReferences_WithEmptyChunks_ReturnsEmptyList()
     {
         // Arrange
-        var context = new PromptContext("Question?", new List<DocumentChunk>());
+        var context = new PromptContext("Question?", new List<ChunkSearchResult>());
 
         // Act
         var sources = _sut.GetSourceReferences(context);
@@ -194,11 +194,11 @@ public class PromptingServiceTests
             new(1, new BoundingBox(0, 0, 100, 20), 0, 50)
         };
         var positionsJson = System.Text.Json.JsonSerializer.Serialize(positions);
-        var chunks = new List<DocumentChunk>
+        var searchResults = new List<ChunkSearchResult>
         {
-            new("chunk-1", "doc-1", 0, 1, "Content", embedding, positionsJson)
+            new(new DocumentChunk("chunk-1", "doc-1", 0, 1, "Content", embedding, positionsJson), 0.88)
         };
-        var context = new PromptContext("Question?", chunks);
+        var context = new PromptContext("Question?", searchResults);
 
         // Act
         var sources = _sut.GetSourceReferences(context);
@@ -207,5 +207,72 @@ public class PromptingServiceTests
         sources.Should().HaveCount(1);
         sources[0].Positions.Should().NotBeNull();
         sources[0].Positions.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public void GetSourceReferences_IncludesRelevanceScore()
+    {
+        // Arrange
+        var embedding = new float[1536];
+        var searchResults = new List<ChunkSearchResult>
+        {
+            new(new DocumentChunk("chunk-1", "doc-1", 0, 1, "High relevance content", embedding), 0.95),
+            new(new DocumentChunk("chunk-2", "doc-1", 1, 2, "Lower relevance content", embedding), 0.72)
+        };
+        var context = new PromptContext("Question?", searchResults);
+
+        // Act
+        var sources = _sut.GetSourceReferences(context);
+
+        // Assert
+        sources.Should().HaveCount(2);
+        sources[0].RelevanceScore.Should().Be(0.95);
+        sources[1].RelevanceScore.Should().Be(0.72);
+    }
+
+    [Fact]
+    public void GetSourceReferences_SortsByRelevanceScore()
+    {
+        // Arrange
+        var embedding = new float[1536];
+        // Insert in wrong order to verify sorting
+        var searchResults = new List<ChunkSearchResult>
+        {
+            new(new DocumentChunk("chunk-1", "doc-1", 0, 2, "Lower relevance", embedding), 0.72),
+            new(new DocumentChunk("chunk-2", "doc-1", 1, 1, "Highest relevance", embedding), 0.95),
+            new(new DocumentChunk("chunk-3", "doc-1", 2, 3, "Medium relevance", embedding), 0.85)
+        };
+        var context = new PromptContext("Question?", searchResults);
+
+        // Act
+        var sources = _sut.GetSourceReferences(context);
+
+        // Assert
+        sources.Should().HaveCount(3);
+        sources[0].Page.Should().Be(1); // Highest score
+        sources[1].Page.Should().Be(3); // Medium score
+        sources[2].Page.Should().Be(2); // Lowest score
+    }
+
+    [Fact]
+    public void GetSourceReferences_KeepsHighestScoreForSamePage()
+    {
+        // Arrange
+        var embedding = new float[1536];
+        var searchResults = new List<ChunkSearchResult>
+        {
+            new(new DocumentChunk("chunk-1", "doc-1", 0, 1, "Chunk 1 from page 1", embedding), 0.80),
+            new(new DocumentChunk("chunk-2", "doc-1", 1, 1, "Chunk 2 from page 1 - higher score", embedding), 0.95),
+            new(new DocumentChunk("chunk-3", "doc-1", 2, 2, "Chunk from page 2", embedding), 0.85)
+        };
+        var context = new PromptContext("Question?", searchResults);
+
+        // Act
+        var sources = _sut.GetSourceReferences(context);
+
+        // Assert
+        sources.Should().HaveCount(2); // Only 2 pages
+        var page1Source = sources.First(s => s.Page == 1);
+        page1Source.RelevanceScore.Should().Be(0.95); // Should keep the higher score
     }
 }

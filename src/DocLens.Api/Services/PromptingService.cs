@@ -82,25 +82,37 @@ public class PromptingService : IPromptingService
 
         // Chunks are already sorted by relevance score from Azure AI Search.
         // We group by page but maintain the order of first appearance (highest relevance first).
-        var seenPages = new HashSet<int>();
-        var orderedSources = new List<SourceReference>();
+        // When multiple chunks exist for the same page, we keep the highest score.
+        var pageScores = new Dictionary<int, (ChunkSearchResult result, double maxScore)>();
 
-        foreach (var chunk in context.RelevantChunks)
+        foreach (var searchResult in context.RelevantChunks)
         {
-            if (seenPages.Add(chunk.PageNumber))
+            var page = searchResult.Chunk.PageNumber;
+            if (!pageScores.TryGetValue(page, out var existing) || searchResult.Score > existing.maxScore)
             {
+                pageScores[page] = (searchResult, searchResult.Score);
+            }
+        }
+
+        // Sort by score descending (best match first)
+        var orderedSources = pageScores.Values
+            .OrderByDescending(x => x.maxScore)
+            .Select(x =>
+            {
+                var chunk = x.result.Chunk;
                 var content = chunk.Content;
                 var text = content.Length > MaxContentPreviewLength
                     ? content[..MaxContentPreviewLength] + "..."
                     : content;
 
-                orderedSources.Add(new SourceReference(
+                return new SourceReference(
                     chunk.PageNumber,
                     text,
-                    chunk.GetPositions()
-                ));
-            }
-        }
+                    chunk.GetPositions(),
+                    x.maxScore
+                );
+            })
+            .ToList();
 
         return orderedSources;
     }
@@ -128,9 +140,9 @@ public class PromptingService : IPromptingService
             }
         }
 
-        // Build context from chunks
-        var documentContext = string.Join("\n\n", context.RelevantChunks.Select(c =>
-            $"[Page {c.PageNumber}]: {c.Content}"));
+        // Build context from chunks (extract the Chunk from ChunkSearchResult)
+        var documentContext = string.Join("\n\n", context.RelevantChunks.Select(r =>
+            $"[Page {r.Chunk.PageNumber}]: {r.Chunk.Content}"));
 
         // Add the current question with context
         messages.Add(new UserChatMessage($"Context:\n{documentContext}\n\nQuestion: {context.Question}"));

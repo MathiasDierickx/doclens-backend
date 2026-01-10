@@ -20,8 +20,8 @@ public interface ISearchService
     /// <param name="documentId">The document ID to filter by.</param>
     /// <param name="topK">Number of results to return.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>The most relevant chunks.</returns>
-    Task<IReadOnlyList<DocumentChunk>> SearchAsync(
+    /// <returns>The most relevant chunks with their relevance scores, sorted by score descending.</returns>
+    Task<IReadOnlyList<ChunkSearchResult>> SearchAsync(
         float[] queryVector,
         string documentId,
         int topK = 5,
