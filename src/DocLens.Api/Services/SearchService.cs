@@ -87,6 +87,7 @@ public class SearchService : ISearchService
         float[] queryVector,
         string documentId,
         int topK = 5,
+        int contextWindow = 1,
         CancellationToken cancellationToken = default)
     {
         // Use hybrid search: combines keyword (BM25) + vector search with RRF ranking
@@ -111,7 +112,7 @@ public class SearchService : ISearchService
         // Pass queryText for keyword search (searches the 'content' field)
         // Azure AI Search combines both using Reciprocal Rank Fusion (RRF)
         var response = await _searchClient.SearchAsync<SearchDocument>(queryText, searchOptions, cancellationToken);
-        var results = new List<ChunkSearchResult>();
+        var matchedChunks = new List<ChunkSearchResult>();
 
         await foreach (var result in response.Value.GetResultsAsync())
         {
@@ -127,6 +128,105 @@ public class SearchService : ISearchService
             );
             // RRF score is typically between 0 and 1, normalized
             var score = result.Score ?? 0.0;
+            matchedChunks.Add(new ChunkSearchResult(chunk, score));
+        }
+
+        // If no context window requested, return as-is
+        if (contextWindow <= 0 || matchedChunks.Count == 0)
+        {
+            return matchedChunks;
+        }
+
+        // Expand context: fetch neighboring chunks for each matched chunk
+        return await ExpandContextAsync(matchedChunks, documentId, contextWindow, cancellationToken);
+    }
+
+    /// <summary>
+    /// Expands search results by fetching neighboring chunks (before and after each match).
+    /// This ensures we don't miss context that spans chunk boundaries.
+    /// </summary>
+    private async Task<IReadOnlyList<ChunkSearchResult>> ExpandContextAsync(
+        List<ChunkSearchResult> matchedChunks,
+        string documentId,
+        int contextWindow,
+        CancellationToken cancellationToken)
+    {
+        // Collect all chunk indices we need (matched + neighbors)
+        var neededIndices = new HashSet<int>();
+        var matchedIndicesWithScores = new Dictionary<int, double>();
+
+        foreach (var match in matchedChunks)
+        {
+            var idx = match.Chunk.ChunkIndex;
+            matchedIndicesWithScores[idx] = match.Score;
+
+            // Add the chunk and its neighbors
+            for (var i = idx - contextWindow; i <= idx + contextWindow; i++)
+            {
+                if (i >= 0) neededIndices.Add(i);
+            }
+        }
+
+        // Fetch all needed chunks in a single query
+        var filter = $"documentId eq '{documentId}' and (";
+        filter += string.Join(" or ", neededIndices.Select(i => $"chunkIndex eq {i}"));
+        filter += ")";
+
+        var options = new SearchOptions
+        {
+            Filter = filter,
+            Size = neededIndices.Count
+        };
+
+        var response = await _searchClient.SearchAsync<SearchDocument>("*", options, cancellationToken);
+        var allChunks = new Dictionary<int, DocumentChunk>();
+
+        await foreach (var result in response.Value.GetResultsAsync())
+        {
+            var doc = result.Document;
+            var chunkIndex = Convert.ToInt32(doc["chunkIndex"]);
+            var chunk = new DocumentChunk(
+                doc["id"].ToString()!,
+                doc["documentId"].ToString()!,
+                chunkIndex,
+                Convert.ToInt32(doc["pageNumber"]),
+                doc["content"].ToString()!,
+                [],
+                doc.TryGetValue("positionsJson", out var posJson) ? posJson?.ToString() : null
+            );
+            allChunks[chunkIndex] = chunk;
+        }
+
+        // Build result list: sort by chunk index to maintain document order
+        // Assign scores: matched chunks keep their score, neighbors get a reduced score
+        var results = new List<ChunkSearchResult>();
+        var processedIndices = new HashSet<int>();
+
+        foreach (var idx in allChunks.Keys.OrderBy(i => i))
+        {
+            if (processedIndices.Contains(idx)) continue;
+            processedIndices.Add(idx);
+
+            var chunk = allChunks[idx];
+
+            // If this was a matched chunk, use its original score
+            // Otherwise, it's a context chunk - give it a lower score based on distance from nearest match
+            double score;
+            if (matchedIndicesWithScores.TryGetValue(idx, out var matchScore))
+            {
+                score = matchScore;
+            }
+            else
+            {
+                // Find nearest matched chunk and calculate diminished score
+                var nearestMatchScore = matchedChunks
+                    .Where(m => Math.Abs(m.Chunk.ChunkIndex - idx) <= contextWindow)
+                    .OrderBy(m => Math.Abs(m.Chunk.ChunkIndex - idx))
+                    .Select(m => m.Score * (1.0 - 0.2 * Math.Abs(m.Chunk.ChunkIndex - idx)))
+                    .FirstOrDefault();
+                score = nearestMatchScore > 0 ? nearestMatchScore : 0.1;
+            }
+
             results.Add(new ChunkSearchResult(chunk, score));
         }
 

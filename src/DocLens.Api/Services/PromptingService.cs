@@ -48,7 +48,8 @@ public class PromptingService : IPromptingService
         var queryVector = embeddings[0];
 
         // Search for relevant chunks using hybrid search (keyword + vector)
-        var chunks = await _searchService.SearchAsync(question, queryVector, documentId, DefaultTopK, cancellationToken);
+        // Uses default context window of 1 to include neighboring chunks
+        var chunks = await _searchService.SearchAsync(question, queryVector, documentId, DefaultTopK, contextWindow: 1, cancellationToken);
 
         return new PromptContext(question, chunks, chatHistory);
     }

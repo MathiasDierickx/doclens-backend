@@ -50,6 +50,7 @@ public class PromptingServiceTests
                 embedding,
                 documentId,
                 It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(searchResults);
 
@@ -88,6 +89,7 @@ public class PromptingServiceTests
                 It.IsAny<float[]>(),
                 documentId,
                 It.IsAny<int>(),
+                It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ChunkSearchResult>());
 
@@ -121,6 +123,7 @@ public class PromptingServiceTests
                 It.IsAny<string>(),
                 It.IsAny<float[]>(),
                 documentId,
+                It.IsAny<int>(),
                 It.IsAny<int>(),
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync(new List<ChunkSearchResult>());
