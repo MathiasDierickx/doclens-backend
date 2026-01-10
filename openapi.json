@@ -51,6 +51,82 @@
         }
       }
     },
+    "/documents/{documentId}/chat-sessions": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get chat sessions",
+        "description": "Get all chat sessions for a document",
+        "operationId": "getChatSessions",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of chat sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/chatSessionsResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat-sessions/{sessionId}": {
+      "get": {
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Get chat history",
+        "description": "Get the chat history for a specific session",
+        "operationId": "getChatHistory",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chat history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/chatHistoryResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/documents/upload-url": {
       "post": {
         "tags": [
@@ -200,6 +276,49 @@
         }
       }
     },
+    "/documents/{documentId}/download-url": {
+      "get": {
+        "tags": [
+          "Documents"
+        ],
+        "summary": "Get download URL",
+        "description": "Generate a SAS URL for downloading a PDF from Azure Blob Storage",
+        "operationId": "getDownloadUrl",
+        "parameters": [
+          {
+            "name": "documentId",
+            "in": "path",
+            "description": "Document ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download URL and document metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/downloadUrlResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Document not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/errorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -283,125 +402,6 @@
           }
         }
       }
-    },
-    "/documents/{documentId}/download-url": {
-      "get": {
-        "tags": [
-          "Documents"
-        ],
-        "summary": "Get download URL",
-        "description": "Generate a SAS URL for downloading a PDF from Azure Blob Storage",
-        "operationId": "getDownloadUrl",
-        "parameters": [
-          {
-            "name": "documentId",
-            "in": "path",
-            "description": "Document ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Download URL and document metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/downloadUrlResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Document not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/errorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/documents/{documentId}/chat-sessions": {
-      "get": {
-        "tags": [
-          "Chat"
-        ],
-        "summary": "Get chat sessions",
-        "description": "Get all chat sessions for a document",
-        "operationId": "getChatSessions",
-        "parameters": [
-          {
-            "name": "documentId",
-            "in": "path",
-            "description": "Document ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "List of chat sessions",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/chatSessionsResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/chat-sessions/{sessionId}": {
-      "get": {
-        "tags": [
-          "Chat"
-        ],
-        "summary": "Get chat history",
-        "description": "Get the chat history for a specific session",
-        "operationId": "getChatHistory",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "in": "path",
-            "description": "Session ID",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Chat history",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/chatHistoryResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Session not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/errorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -411,6 +411,102 @@
         "properties": {
           "question": {
             "type": "string"
+          },
+          "sessionId": {
+            "type": "string"
+          }
+        }
+      },
+      "boundingBox": {
+        "type": "object",
+        "properties": {
+          "x": {
+            "type": "number",
+            "format": "float"
+          },
+          "y": {
+            "type": "number",
+            "format": "float"
+          },
+          "width": {
+            "type": "number",
+            "format": "float"
+          },
+          "height": {
+            "type": "number",
+            "format": "float"
+          }
+        }
+      },
+      "chatHistoryResponse": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/chatMessageDto"
+            }
+          }
+        }
+      },
+      "chatMessageDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/sourceReference"
+            }
+          }
+        }
+      },
+      "chatSessionsResponse": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/chatSessionSummary"
+            }
+          }
+        }
+      },
+      "chatSessionSummary": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "string"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "messageCount": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -457,6 +553,24 @@
           }
         }
       },
+      "downloadUrlResponse": {
+        "type": "object",
+        "properties": {
+          "documentId": {
+            "type": "string"
+          },
+          "downloadUrl": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "errorResponse": {
         "type": "object",
         "properties": {
@@ -492,6 +606,44 @@
           }
         }
       },
+      "sourceReference": {
+        "type": "object",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "text": {
+            "type": "string"
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/textPosition"
+            }
+          }
+        }
+      },
+      "textPosition": {
+        "type": "object",
+        "properties": {
+          "pageNumber": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "boundingBox": {
+            "$ref": "#/components/schemas/boundingBox"
+          },
+          "charOffset": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "charLength": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
       "uploadUrlResponse": {
         "type": "object",
         "properties": {
@@ -507,149 +659,6 @@
           "expiresAt": {
             "type": "string",
             "format": "date-time"
-          }
-        }
-      },
-      "downloadUrlResponse": {
-        "type": "object",
-        "properties": {
-          "documentId": {
-            "type": "string"
-          },
-          "downloadUrl": {
-            "type": "string"
-          },
-          "filename": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "chatSessionSummary": {
-        "type": "object",
-        "properties": {
-          "sessionId": {
-            "type": "string"
-          },
-          "documentId": {
-            "type": "string"
-          },
-          "messageCount": {
-            "type": "integer"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "chatSessionsResponse": {
-        "type": "object",
-        "properties": {
-          "sessions": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/chatSessionSummary"
-            }
-          }
-        }
-      },
-      "chatMessageDto": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string"
-          },
-          "content": {
-            "type": "string"
-          },
-          "timestamp": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "sources": {
-            "type": "array",
-            "nullable": true,
-            "items": {
-              "$ref": "#/components/schemas/sourceReference"
-            }
-          }
-        }
-      },
-      "sourceReference": {
-        "type": "object",
-        "properties": {
-          "page": {
-            "type": "integer"
-          },
-          "text": {
-            "type": "string"
-          },
-          "positions": {
-            "type": "array",
-            "nullable": true,
-            "items": {
-              "$ref": "#/components/schemas/textPosition"
-            }
-          }
-        }
-      },
-      "textPosition": {
-        "type": "object",
-        "properties": {
-          "pageNumber": {
-            "type": "integer"
-          },
-          "boundingBox": {
-            "$ref": "#/components/schemas/boundingBox",
-            "nullable": true
-          },
-          "charOffset": {
-            "type": "integer"
-          },
-          "charLength": {
-            "type": "integer"
-          }
-        }
-      },
-      "boundingBox": {
-        "type": "object",
-        "properties": {
-          "x": {
-            "type": "number"
-          },
-          "y": {
-            "type": "number"
-          },
-          "width": {
-            "type": "number"
-          },
-          "height": {
-            "type": "number"
-          }
-        }
-      },
-      "chatHistoryResponse": {
-        "type": "object",
-        "properties": {
-          "sessionId": {
-            "type": "string"
-          },
-          "documentId": {
-            "type": "string"
-          },
-          "messages": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/chatMessageDto"
-            }
           }
         }
       }
